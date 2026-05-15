@@ -137,7 +137,10 @@ pub fn build_menu(
                 "no_accounts",
                 localize(
                     language,
-                    LocalizedText::new("No saved accounts", "\u{6682}\u{65e0}\u{5df2}\u{4fdd}\u{5b58}\u{8d26}\u{53f7}"),
+                    LocalizedText::new(
+                        "No saved accounts",
+                        "\u{6682}\u{65e0}\u{5df2}\u{4fdd}\u{5b58}\u{8d26}\u{53f7}",
+                    ),
                 ),
                 false,
                 None::<&str>,

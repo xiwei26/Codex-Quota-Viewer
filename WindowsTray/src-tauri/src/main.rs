@@ -154,8 +154,7 @@ fn main() {
                 resolve_language(settings.app_language, &system_language_hints());
             let vault = account_vault::AccountVault::new(state.accounts_dir.clone());
             let accounts =
-                account_commands::build_accounts_presentation(&vault, resolved_language, None)
-                    .ok();
+                account_commands::build_accounts_presentation(&vault, resolved_language, None).ok();
             tray::install_tray(
                 &app_handle,
                 &TraySnapshot::loading(),
@@ -183,11 +182,7 @@ pub(crate) fn handle_menu_event(app: &AppHandle, menu_id: &str) {
         MENU_QUIT => spawn_quit(app.clone(), state),
         _ => {
             if let Some(account_id) = tray::account_id_from_menu_id(menu_id) {
-                account_commands::spawn_activate_account_from_tray(
-                    app.clone(),
-                    state,
-                    account_id,
-                );
+                account_commands::spawn_activate_account_from_tray(app.clone(), state, account_id);
             }
         }
     }
@@ -217,7 +212,9 @@ fn restart_refresh_scheduler(app: AppHandle, state: SharedAppState, settings: Ap
     start_refresh_scheduler(app, state, settings);
 }
 
-pub(crate) async fn current_resolved_language(state: &SharedAppState) -> settings::ResolvedAppLanguage {
+pub(crate) async fn current_resolved_language(
+    state: &SharedAppState,
+) -> settings::ResolvedAppLanguage {
     let settings = state.settings.lock().await;
     resolve_language(settings.app_language, &system_language_hints())
 }

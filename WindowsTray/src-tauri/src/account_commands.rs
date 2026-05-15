@@ -66,7 +66,10 @@ pub fn build_accounts_presentation(
             accounts: localize(language, LocalizedText::new("Accounts", "\u{8d26}\u{53f7}")),
             sign_in_with_chatgpt: localize(
                 language,
-                LocalizedText::new("Sign in with ChatGPT", "\u{4f7f}\u{7528} ChatGPT \u{767b}\u{5f55}"),
+                LocalizedText::new(
+                    "Sign in with ChatGPT",
+                    "\u{4f7f}\u{7528} ChatGPT \u{767b}\u{5f55}",
+                ),
             ),
             add_api_account: localize(
                 language,
@@ -74,18 +77,24 @@ pub fn build_accounts_presentation(
             ),
             open_vault_folder: localize(
                 language,
-                LocalizedText::new("Open Vault Folder", "\u{6253}\u{5f00}\u{8d26}\u{53f7}\u{4ed3}\u{6587}\u{4ef6}\u{5939}"),
+                LocalizedText::new(
+                    "Open Vault Folder",
+                    "\u{6253}\u{5f00}\u{8d26}\u{53f7}\u{4ed3}\u{6587}\u{4ef6}\u{5939}",
+                ),
             ),
-            activate: localize(
+            activate: localize(language, LocalizedText::new("Activate", "\u{6fc0}\u{6d3b}")),
+            rename: localize(
                 language,
-                LocalizedText::new("Activate", "\u{6fc0}\u{6d3b}"),
+                LocalizedText::new("Rename", "\u{91cd}\u{547d}\u{540d}"),
             ),
-            rename: localize(language, LocalizedText::new("Rename", "\u{91cd}\u{547d}\u{540d}")),
             forget: localize(language, LocalizedText::new("Forget", "\u{79fb}\u{9664}")),
             current: localize(language, LocalizedText::new("Current", "\u{5f53}\u{524d}")),
             no_saved_accounts: localize(
                 language,
-                LocalizedText::new("No saved accounts", "\u{6682}\u{65e0}\u{5df2}\u{4fdd}\u{5b58}\u{8d26}\u{53f7}"),
+                LocalizedText::new(
+                    "No saved accounts",
+                    "\u{6682}\u{65e0}\u{5df2}\u{4fdd}\u{5b58}\u{8d26}\u{53f7}",
+                ),
             ),
         },
         rows,
@@ -168,7 +177,10 @@ pub async fn activate_account(
         language,
         Some(localize(
             language,
-            LocalizedText::new("Account activated", "\u{8d26}\u{53f7}\u{5df2}\u{6fc0}\u{6d3b}"),
+            LocalizedText::new(
+                "Account activated",
+                "\u{8d26}\u{53f7}\u{5df2}\u{6fc0}\u{6d3b}",
+            ),
         )),
     )
     .map_err(|error| app_error_message(language, &error))
@@ -191,7 +203,10 @@ pub async fn rename_account(
         language,
         Some(localize(
             language,
-            LocalizedText::new("Account renamed", "\u{8d26}\u{53f7}\u{5df2}\u{91cd}\u{547d}\u{540d}"),
+            LocalizedText::new(
+                "Account renamed",
+                "\u{8d26}\u{53f7}\u{5df2}\u{91cd}\u{547d}\u{540d}",
+            ),
         )),
     )
     .map_err(|error| app_error_message(language, &error))
@@ -213,16 +228,17 @@ pub async fn forget_account(
         language,
         Some(localize(
             language,
-            LocalizedText::new("Account forgotten", "\u{8d26}\u{53f7}\u{5df2}\u{79fb}\u{9664}"),
+            LocalizedText::new(
+                "Account forgotten",
+                "\u{8d26}\u{53f7}\u{5df2}\u{79fb}\u{9664}",
+            ),
         )),
     )
     .map_err(|error| app_error_message(language, &error))
 }
 
 #[tauri::command]
-pub async fn open_vault_folder(
-    state: tauri::State<'_, SharedAppState>,
-) -> Result<(), String> {
+pub async fn open_vault_folder(state: tauri::State<'_, SharedAppState>) -> Result<(), String> {
     let app_state = state.inner().clone();
     std::fs::create_dir_all(&app_state.accounts_dir).map_err(|error| error.to_string())?;
     open::that(&app_state.accounts_dir).map_err(|error| error.to_string())

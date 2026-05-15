@@ -1,5 +1,6 @@
-use std::fs;
+use std::fs::{self, File};
 use std::io;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
@@ -58,7 +59,10 @@ impl AccountVault {
             Ok(index) => index.account_ids,
             Err(error) if error.kind() == io::ErrorKind::NotFound => Vec::new(),
             Err(error) => {
-                issue = Some(format!("Account vault index could not be read: {error}"));
+                issue = Some(format!(
+                    "Account vault index {} could not be read: {error}",
+                    self.index_path().display()
+                ));
                 return self.list_record_files(issue);
             }
         };
@@ -68,7 +72,10 @@ impl AccountVault {
             match self.read_record(&account_id) {
                 Ok(record) => records.push(record),
                 Err(error) => {
-                    let message = format!("Account record {account_id} could not be read: {error}");
+                    let message = format!(
+                        "Account record {} could not be read: {error}",
+                        self.record_path(&account_id).display()
+                    );
                     append_issue(&mut issue, message);
                 }
             }
@@ -156,12 +163,30 @@ impl AccountVault {
         }
 
         let path = self.record_path(account_id);
-        match fs::remove_file(&path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(vault_error(error)),
+        let tombstone = match move_to_tombstone(&path) {
+            Ok(tombstone) => tombstone,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(vault_error_with_context(
+                    format!("move record {} to tombstone", path.display()),
+                    error,
+                ));
+            }
+        };
+
+        if let Err(error) = self.write_index(&index) {
+            if let Some(tombstone) = tombstone.as_ref() {
+                let _ = fs::rename(tombstone, &path);
+            }
+            return Err(error);
         }
-        self.write_index(&index)
+
+        if let Some(tombstone) = tombstone {
+            fs::remove_file(&tombstone).map_err(|error| {
+                vault_error_with_context(format!("delete tombstone {}", tombstone.display()), error)
+            })?;
+        }
+        Ok(())
     }
 
     pub fn load_record(&self, account_id: &str) -> Result<VaultAccountRecord, AppError> {
@@ -169,7 +194,10 @@ impl AccountVault {
             if error.kind() == io::ErrorKind::NotFound {
                 AppError::AccountNotFound(account_id.to_string())
             } else {
-                vault_error(error)
+                vault_error_with_context(
+                    format!("load record {}", self.record_path(account_id).display()),
+                    error,
+                )
             }
         })
     }
@@ -187,7 +215,13 @@ impl AccountVault {
     }
 
     fn read_index(&self) -> io::Result<VaultIndex> {
-        let data = fs::read(self.index_path())?;
+        let path = self.index_path();
+        let data = fs::read(&path).map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!("read index {} failed: {error}", path.display()),
+            )
+        })?;
         serde_json::from_slice(&data).map_err(invalid_data)
     }
 
@@ -195,31 +229,51 @@ impl AccountVault {
         match self.read_index() {
             Ok(index) => Ok(index),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(VaultIndex::default()),
-            Err(error) => Err(vault_error(error)),
+            Err(error) => Err(vault_error_with_context(
+                format!("read index {}", self.index_path().display()),
+                error,
+            )),
         }
     }
 
     fn write_index(&self, index: &VaultIndex) -> Result<(), AppError> {
         let path = self.index_path();
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(vault_error)?;
+            fs::create_dir_all(parent).map_err(|error| {
+                vault_error_with_context(format!("create directory {}", parent.display()), error)
+            })?;
         }
-        let data = serde_json::to_vec_pretty(index).map_err(vault_error)?;
-        fs::write(path, data).map_err(vault_error)
+        let data = serde_json::to_vec_pretty(index)
+            .map_err(|error| vault_error_with_context("serialize account index", error))?;
+        replace_file_safely(&path, &data).map_err(|error| {
+            vault_error_with_context(format!("write index {}", path.display()), error)
+        })
     }
 
     fn read_record(&self, account_id: &str) -> io::Result<VaultAccountRecord> {
-        let data = fs::read(self.record_path(account_id))?;
+        let path = self.record_path(account_id);
+        let data = fs::read(&path).map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!("read record {} failed: {error}", path.display()),
+            )
+        })?;
         serde_json::from_slice(&data).map_err(invalid_data)
     }
 
     fn write_record(&self, record: &VaultAccountRecord) -> Result<(), AppError> {
         let path = self.record_path(record.id.as_str());
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(vault_error)?;
+            fs::create_dir_all(parent).map_err(|error| {
+                vault_error_with_context(format!("create directory {}", parent.display()), error)
+            })?;
         }
-        let data = serde_json::to_vec_pretty(record).map_err(vault_error)?;
-        fs::write(path, data).map_err(vault_error)
+        let data = serde_json::to_vec_pretty(record).map_err(|error| {
+            vault_error_with_context(format!("serialize record {}", record.id.as_str()), error)
+        })?;
+        replace_file_safely(&path, &data).map_err(|error| {
+            vault_error_with_context(format!("write record {}", path.display()), error)
+        })
     }
 
     fn next_account_id(&self, index: &VaultIndex) -> AccountId {
@@ -247,12 +301,22 @@ impl AccountVault {
                     issue,
                 });
             }
-            Err(error) => return Err(vault_error(error)),
+            Err(error) => {
+                return Err(vault_error_with_context(
+                    format!("read records directory {}", self.records_dir().display()),
+                    error,
+                ));
+            }
         };
 
         let mut paths = entries
             .collect::<Result<Vec<_>, _>>()
-            .map_err(vault_error)?
+            .map_err(|error| {
+                vault_error_with_context(
+                    format!("read records directory {}", self.records_dir().display()),
+                    error,
+                )
+            })?
             .into_iter()
             .map(|entry| entry.path())
             .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("json"))
@@ -322,8 +386,70 @@ fn invalid_data(error: serde_json::Error) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error)
 }
 
-fn vault_error(error: impl std::error::Error) -> AppError {
-    AppError::AccountVaultFailed(error.to_string())
+fn vault_error_with_context(context: impl Into<String>, error: impl std::error::Error) -> AppError {
+    AppError::AccountVaultFailed(format!("{} failed: {}", context.into(), error))
+}
+
+fn replace_file_safely(path: &Path, data: &[u8]) -> io::Result<()> {
+    let parent = path.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{} has no parent directory", path.display()),
+        )
+    })?;
+    fs::create_dir_all(parent)?;
+
+    let temp_path = unique_sidecar_path(path, "tmp");
+    let backup_path = unique_sidecar_path(path, "bak");
+
+    {
+        let mut file = File::create(&temp_path)?;
+        file.write_all(data)?;
+        file.sync_all()?;
+    }
+
+    let had_existing = match fs::rename(path, &backup_path) {
+        Ok(()) => true,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+        Err(error) => {
+            let _ = fs::remove_file(&temp_path);
+            return Err(error);
+        }
+    };
+
+    if let Err(error) = fs::rename(&temp_path, path) {
+        if had_existing {
+            let _ = fs::rename(&backup_path, path);
+        }
+        let _ = fs::remove_file(&temp_path);
+        return Err(error);
+    }
+
+    if had_existing {
+        let _ = fs::remove_file(&backup_path);
+    }
+
+    Ok(())
+}
+
+fn move_to_tombstone(path: &Path) -> io::Result<Option<PathBuf>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let tombstone = unique_sidecar_path(path, "deleted");
+    fs::rename(path, &tombstone)?;
+    Ok(Some(tombstone))
+}
+
+fn unique_sidecar_path(path: &Path, extension_suffix: &str) -> PathBuf {
+    let mut candidate = path.with_extension(extension_suffix);
+    let mut suffix = 2;
+    while candidate.exists() {
+        candidate = path.with_extension(format!("{extension_suffix}-{suffix}"));
+        suffix += 1;
+    }
+    candidate
 }
 
 #[cfg(test)]

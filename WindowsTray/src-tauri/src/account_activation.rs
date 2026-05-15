@@ -50,8 +50,7 @@ fn write_text_file(path: &Path, text: &str) -> Result<(), AppError> {
 fn write_bytes_file(path: &Path, data: &[u8]) -> Result<(), AppError> {
     let temp = path.with_extension("tmp");
     fs::write(&temp, data).map_err(|error| AppError::AccountActivationFailed(error.to_string()))?;
-    fs::rename(&temp, path)
-        .map_err(|error| AppError::AccountActivationFailed(error.to_string()))
+    fs::rename(&temp, path).map_err(|error| AppError::AccountActivationFailed(error.to_string()))
 }
 
 fn escape_toml(value: &str) -> String {
