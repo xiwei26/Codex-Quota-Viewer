@@ -1,6 +1,6 @@
 [package]
 name = "codex-quota-viewer-windows-tray"
-version = "0.0.2"
+version = "0.0.5"
 description = "Windows tray app for Codex Quota Viewer"
 edition = "2021"
 

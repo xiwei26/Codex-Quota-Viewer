@@ -341,7 +341,7 @@ dependencies = [
 
 [[package]]
 name = "codex-quota-viewer-windows-tray"
-version = "0.0.2"
+version = "0.0.5"
 dependencies = [
  "anyhow",
  "chrono",
