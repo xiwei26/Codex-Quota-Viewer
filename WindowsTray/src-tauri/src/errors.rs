@@ -19,6 +19,8 @@ pub enum AppError {
     AccountActivationFailed(String),
     ProviderModeFailed(String),
     ProviderModeNotActive,
+    RestorePointFailed(String),
+    RestorePointUnavailable,
 }
 
 impl AppError {
@@ -41,6 +43,8 @@ impl AppError {
             Self::AccountActivationFailed(_) => "Account activation failed",
             Self::ProviderModeFailed(_) => "Third-party Provider mode failed",
             Self::ProviderModeNotActive => "Third-party Provider mode is not active",
+            Self::RestorePointFailed(_) => "Restore point operation failed",
+            Self::RestorePointUnavailable => "No restore point is available",
         }
     }
 
@@ -55,7 +59,8 @@ impl AppError {
             | Self::AccountValidationFailed(message)
             | Self::AccountNotFound(message)
             | Self::AccountActivationFailed(message)
-            | Self::ProviderModeFailed(message) => Some(message),
+            | Self::ProviderModeFailed(message)
+            | Self::RestorePointFailed(message) => Some(message),
             _ => None,
         }
     }

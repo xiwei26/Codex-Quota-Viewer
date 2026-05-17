@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::account_activation::activate_account_record;
+use crate::account_activation::safely_activate_account_record;
 use crate::account_models::{AccountKind, AccountRowState, AddApiAccountInput};
 use crate::account_vault::AccountVault;
 use crate::app_state::SharedAppState;
@@ -10,6 +10,7 @@ use crate::provider_mode::{
     enter_provider_mode as enter_provider_mode_files,
     exit_provider_mode as exit_provider_mode_files, load_provider_mode_state, ProviderModeState,
 };
+use crate::restore_points::RestorePointManager;
 use crate::settings::ResolvedAppLanguage;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -29,6 +30,7 @@ pub struct AccountLabels {
     pub sign_in_with_chatgpt: String,
     pub add_api_account: String,
     pub open_vault_folder: String,
+    pub rollback_last_change: String,
     pub activate: String,
     pub rename: String,
     pub forget: String,
@@ -88,6 +90,13 @@ pub fn build_accounts_presentation(
                 LocalizedText::new(
                     "Open Vault Folder",
                     "\u{6253}\u{5f00}\u{8d26}\u{53f7}\u{4ed3}\u{6587}\u{4ef6}\u{5939}",
+                ),
+            ),
+            rollback_last_change: localize(
+                language,
+                LocalizedText::new(
+                    "Rollback Last Change",
+                    "\u{56de}\u{6eda}\u{6700}\u{8fd1}\u{66f4}\u{6539}",
                 ),
             ),
             activate: localize(language, LocalizedText::new("Activate", "\u{6fc0}\u{6d3b}")),
@@ -216,8 +225,12 @@ pub async fn activate_account(
     let record = vault
         .load_record(&account_id)
         .map_err(|error| app_error_message(language, &error))?;
-    activate_account_record(&record, &app_state.codex_home)
-        .map_err(|error| app_error_message(language, &error))?;
+    safely_activate_account_record(
+        &record,
+        &app_state.codex_home,
+        &app_state.switch_backups_dir,
+    )
+    .map_err(|error| app_error_message(language, &error))?;
     super::spawn_refresh(app, app_state.clone());
     build_accounts_presentation_with_provider_mode(
         &vault,
@@ -227,7 +240,34 @@ pub async fn activate_account(
             language,
             LocalizedText::new(
                 "Account activated",
-                "\u{8d26}\u{53f7}\u{5df2}\u{6fc0}\u{6d3b}",
+                "\u{8d26}\u{53f7}\u{5df2}\u{5b89}\u{5168}\u{6fc0}\u{6d3b}",
+            ),
+        )),
+    )
+    .map_err(|error| app_error_message(language, &error))
+}
+
+#[tauri::command]
+pub async fn rollback_last_change(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, SharedAppState>,
+) -> Result<AccountsPresentation, String> {
+    let app_state = state.inner().clone();
+    let language = super::current_resolved_language(&app_state).await;
+    let vault = AccountVault::new(app_state.accounts_dir.clone());
+    RestorePointManager::new(app_state.switch_backups_dir.clone())
+        .restore_latest()
+        .map_err(|error| app_error_message(language, &error))?;
+    super::spawn_refresh(app, app_state.clone());
+    build_accounts_presentation_with_provider_mode(
+        &vault,
+        &app_state.provider_mode_dir,
+        language,
+        Some(localize(
+            language,
+            LocalizedText::new(
+                "Rollback complete",
+                "\u{56de}\u{6eda}\u{5df2}\u{5b8c}\u{6210}",
             ),
         )),
     )
@@ -373,7 +413,7 @@ pub fn spawn_activate_account_from_tray(
             let record = vault
                 .load_record(&account_id)
                 .map_err(|error| app_error_message(language, &error))?;
-            activate_account_record(&record, &state.codex_home)
+            safely_activate_account_record(&record, &state.codex_home, &state.switch_backups_dir)
                 .map_err(|error| app_error_message(language, &error))?;
             Ok::<(), String>(())
         }

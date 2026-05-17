@@ -15,7 +15,10 @@ The Windows MVP is a Tauri-based system tray app for Codex Quota Viewer.
 - Saves multiple ChatGPT and API accounts in a local Windows account vault.
 - Imports the current local ChatGPT Codex login as a saved account.
 - Adds OpenAI-compatible API accounts from the Windows settings window.
-- Activates saved accounts directly into the resolved Codex home.
+- Safely activates saved accounts into the resolved Codex home with a restore
+  point for `auth.json` and `config.toml`.
+- Rolls back the latest Safe Switch restore point from the Accounts page or
+  tray menu.
 - Uses a saved API account as a third-party Provider while keeping the current
   ChatGPT login active.
 - Restores the previous `auth.json` and `config.toml` when leaving
@@ -27,12 +30,20 @@ The Windows MVP is a Tauri-based system tray app for Codex Quota Viewer.
 The MVP reads the active Codex profile from `%USERPROFILE%\.codex` unless
 `CODEX_HOME` is set.
 
-## Account Activation
+## Safe Switch And Rollback
 
-Windows account activation currently writes directly into the resolved Codex
-home. It does not yet create restore points or perform the full Safe Switch
-repair flow available in the macOS app. Use the confirmation prompt as the
-boundary for this direct activation behavior.
+Windows account activation now creates a restore point before writing the
+selected account into the resolved Codex home. The restore point covers:
+
+- `auth.json`
+- `config.toml`
+
+If activation fails after the restore point is created, the app automatically
+restores the previous files. You can also use **Rollback Last Change** from the
+Accounts page or tray menu to restore the latest Safe Switch restore point.
+
+This phase does not yet close/reopen Codex automatically or run the macOS
+thread/provider repair flow.
 
 ## Third-party Provider Mode
 
@@ -48,8 +59,7 @@ Switch thread/provider repair flow.
 
 ## Not Included In The MVP
 
-- Full Safe Switch orchestration.
-- Rollback restore points beyond the Provider-mode file backup.
+- Codex close/reopen orchestration around account switching.
 - Thread/provider repair after account activation or Provider-mode changes.
 
 ## Build

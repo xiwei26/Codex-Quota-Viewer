@@ -16,6 +16,7 @@ mod launch_at_login;
 mod localization;
 mod provider_mode;
 mod quota;
+mod restore_points;
 mod scheduler;
 mod session_manager;
 mod settings;
@@ -33,7 +34,8 @@ use settings::{
     load_settings, save_settings, settings_presentation, AppSettings, SettingsPresentation,
 };
 use tray::{
-    MENU_OPEN_CODEX_FOLDER, MENU_OPEN_SESSION_MANAGER, MENU_QUIT, MENU_REFRESH, MENU_SETTINGS,
+    MENU_OPEN_CODEX_FOLDER, MENU_OPEN_SESSION_MANAGER, MENU_QUIT, MENU_REFRESH, MENU_ROLLBACK,
+    MENU_SETTINGS,
 };
 
 #[tauri::command]
@@ -111,6 +113,7 @@ fn main() {
             account_commands::activate_account,
             account_commands::enter_provider_mode,
             account_commands::exit_provider_mode,
+            account_commands::rollback_last_change,
             account_commands::rename_account,
             account_commands::forget_account,
             account_commands::open_vault_folder
@@ -135,6 +138,7 @@ fn main() {
             let settings_path = app_data_dir.join("settings.json");
             let accounts_dir = app_data_dir.join("Accounts");
             let provider_mode_dir = app_data_dir.join("ProviderMode");
+            let switch_backups_dir = app_data_dir.join("SwitchBackups");
             let settings_result = load_settings(&settings_path);
             let settings = settings_result.settings.clone();
 
@@ -143,6 +147,7 @@ fn main() {
                 settings_path,
                 accounts_dir,
                 provider_mode_dir,
+                switch_backups_dir,
                 settings: tauri::async_runtime::Mutex::new(settings.clone()),
                 settings_load_issue: tauri::async_runtime::Mutex::new(settings_result.issue),
                 tray_snapshot: tauri::async_runtime::Mutex::new(TraySnapshot::loading()),
@@ -183,6 +188,7 @@ pub(crate) fn handle_menu_event(app: &AppHandle, menu_id: &str) {
     let state = app.state::<SharedAppState>().inner().clone();
     match menu_id {
         MENU_REFRESH => spawn_refresh(app.clone(), state),
+        MENU_ROLLBACK => spawn_rollback_last_change(app.clone(), state),
         MENU_SETTINGS => show_settings_window(app),
         MENU_OPEN_SESSION_MANAGER => spawn_open_session_manager(app.clone(), state),
         MENU_OPEN_CODEX_FOLDER => {
@@ -196,6 +202,27 @@ pub(crate) fn handle_menu_event(app: &AppHandle, menu_id: &str) {
             }
         }
     }
+}
+
+fn spawn_rollback_last_change(app: AppHandle, state: SharedAppState) {
+    tauri::async_runtime::spawn(async move {
+        let result = restore_points::RestorePointManager::new(state.switch_backups_dir.clone())
+            .restore_latest();
+        match result {
+            Ok(_) => {
+                let mut snapshot = state.tray_snapshot.lock().await;
+                snapshot.last_error = None;
+                drop(snapshot);
+                spawn_refresh(app, state);
+            }
+            Err(error) => {
+                let mut snapshot = state.tray_snapshot.lock().await;
+                snapshot.last_error = Some(error);
+                drop(snapshot);
+                update_tray_from_state(&app, &state).await;
+            }
+        }
+    });
 }
 
 fn start_refresh_scheduler(app: AppHandle, state: SharedAppState, settings: AppSettings) {

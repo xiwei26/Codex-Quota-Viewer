@@ -60,6 +60,7 @@ export type AccountsPresentation = {
     signInWithChatgpt: string;
     addApiAccount: string;
     openVaultFolder: string;
+    rollbackLastChange: string;
     activate: string;
     rename: string;
     forget: string;

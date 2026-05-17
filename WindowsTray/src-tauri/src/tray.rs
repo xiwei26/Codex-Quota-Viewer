@@ -10,6 +10,7 @@ use crate::settings::ResolvedAppLanguage;
 pub const MENU_ALL_ACCOUNTS: &str = "all_accounts";
 pub const MENU_ACCOUNT_PREFIX: &str = "activate_account:";
 pub const MENU_REFRESH: &str = "refresh_quota";
+pub const MENU_ROLLBACK: &str = "rollback_last_change";
 pub const MENU_SETTINGS: &str = "settings";
 pub const MENU_OPEN_SESSION_MANAGER: &str = "open_session_manager";
 pub const MENU_OPEN_CODEX_FOLDER: &str = "open_codex_folder";
@@ -71,6 +72,19 @@ pub fn build_menu(
         localize(
             language,
             LocalizedText::new("Refresh Quota", "\u{5237}\u{65b0}\u{989d}\u{5ea6}"),
+        ),
+        true,
+        None::<&str>,
+    )?;
+    let rollback_item = MenuItem::with_id(
+        app,
+        MENU_ROLLBACK,
+        localize(
+            language,
+            LocalizedText::new(
+                "Rollback Last Change",
+                "\u{56de}\u{6eda}\u{6700}\u{8fd1}\u{66f4}\u{6539}",
+            ),
         ),
         true,
         None::<&str>,
@@ -186,6 +200,7 @@ pub fn build_menu(
 
     menu_items.extend([
         Box::new(refresh_item) as Box<dyn tauri::menu::IsMenuItem<tauri::Wry>>,
+        Box::new(rollback_item),
         Box::new(settings_item),
         Box::new(open_manager_item),
         Box::new(open_folder_item),

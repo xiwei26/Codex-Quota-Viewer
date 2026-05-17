@@ -98,6 +98,14 @@ pub fn app_error_message(language: ResolvedAppLanguage, error: &AppError) -> Str
             "Third-party Provider mode is not active",
             "Third-party Provider mode is not active",
         ),
+        AppError::RestorePointFailed(_) => LocalizedText::new(
+            "Restore point operation failed",
+            "Restore point operation failed",
+        ),
+        AppError::RestorePointUnavailable => LocalizedText::new(
+            "No restore point is available",
+            "No restore point is available",
+        ),
     };
     localize(language, text)
 }

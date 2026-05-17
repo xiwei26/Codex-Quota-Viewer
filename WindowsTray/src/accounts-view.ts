@@ -38,6 +38,7 @@ export function renderAccounts(
       <div class="accounts-toolbar">
         <button id="importChatGpt">${escapeHtml(presentation.labels.signInWithChatgpt)}</button>
         <button id="showApiForm">${escapeHtml(presentation.labels.addApiAccount)}</button>
+        <button id="rollbackLastChange">${escapeHtml(presentation.labels.rollbackLastChange)}</button>
         <button id="openVaultFolder">${escapeHtml(presentation.labels.openVaultFolder)}</button>
       </div>
       <form id="apiAccountForm" class="api-form" hidden>
@@ -67,6 +68,11 @@ function bindAccountControls(onUpdated: (next: AccountsPresentation) => void): v
   document.querySelector("#openVaultFolder")?.addEventListener("click", async () => {
     await invoke("open_vault_folder");
   });
+  document.querySelector("#rollbackLastChange")?.addEventListener("click", async () => {
+    if (confirm("Rollback the latest safe switch restore point?")) {
+      onUpdated(await invoke<AccountsPresentation>("rollback_last_change"));
+    }
+  });
   document.querySelector("#apiAccountForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     onUpdated(await invoke<AccountsPresentation>("add_api_account", {
@@ -85,7 +91,7 @@ function bindAccountControls(onUpdated: (next: AccountsPresentation) => void): v
     button.addEventListener("click", async () => {
       const accountId = button.dataset.accountId ?? "";
       const action = button.dataset.action;
-      if (action === "activate" && confirm("Activate this account for local Codex? This updates files in your Codex home.")) {
+      if (action === "activate" && confirm("Safely switch to this account? A restore point will be created first.")) {
         onUpdated(await invoke<AccountsPresentation>("activate_account", { accountId }));
       }
       if (action === "rename") {
