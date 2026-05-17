@@ -16,7 +16,8 @@ The Windows MVP is a Tauri-based system tray app for Codex Quota Viewer.
 - Imports the current local ChatGPT Codex login as a saved account.
 - Adds OpenAI-compatible API accounts from the Windows settings window.
 - Safely activates saved accounts into the resolved Codex home with a restore
-  point for `auth.json` and `config.toml`.
+  point for `auth.json`, `config.toml`, and any session JSONL rollout metadata
+  files that need provider synchronization.
 - Rolls back the latest Safe Switch restore point from the Accounts page or
   tray menu.
 - Closes the Windows Codex desktop process before Safe Switch or Provider-mode
@@ -52,8 +53,11 @@ processes so command-line Codex sessions are not targeted by the desktop
 control step.
 
 After a Safe Switch, the app asks the bundled Session Manager to rescan local
-sessions and repair official Codex thread metadata. Use **Repair Now** from the
-Accounts page or tray menu when you want to run the same repair flow manually.
+sessions and repair official Codex thread metadata. It also rewrites
+`session_meta.payload.model_provider` in historical session JSONL files when the
+target account uses a different provider, matching the macOS Safe Switch
+behavior. Use **Repair Now** from the Accounts page or tray menu when you want
+to run the same repair flow manually.
 
 ## Third-party Provider Mode
 
@@ -68,8 +72,8 @@ entry and exit also use the same Codex desktop close/reopen guard.
 
 ## Not Included In The MVP
 
-- Rollout provider synchronization for historical session JSONL files beyond
-  what the bundled Session Manager repairs in official local thread metadata.
+- Provider-mode entry and exit still use their own file backup path instead of
+  the full Safe Switch restore-point flow used by normal account activation.
 
 ## Build
 

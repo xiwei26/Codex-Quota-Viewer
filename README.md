@@ -274,7 +274,8 @@ General and Accounts settings, saved ChatGPT/API accounts, direct account
 activation with Safe Switch restore points and rollback, third-party Provider
 mode for ChatGPT logins backed by saved API accounts, opening the bundled
 Session Manager, automatic and manual Repair Now for local official thread
-metadata, Codex desktop close/reopen guards around file-changing switches,
+metadata, Safe Switch rollout provider synchronization for historical session
+JSONL files, Codex desktop close/reopen guards around file-changing switches,
 opening the local Codex folder, and clean quit.
 
 Build it on Windows:

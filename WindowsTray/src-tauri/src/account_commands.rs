@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::account_activation::safely_activate_account_record;
+use crate::account_activation::safely_activate_account_record_with_rollout;
 use crate::account_models::{AccountKind, AccountRowState, AddApiAccountInput};
 use crate::account_vault::AccountVault;
 use crate::app_state::SharedAppState;
@@ -231,7 +231,7 @@ pub async fn activate_account(
     let record = vault
         .load_record(&account_id)
         .map_err(|error| app_error_message(language, &error))?;
-    safely_activate_account_record(
+    let (_restore_point, rollout_updates) = safely_activate_account_record_with_rollout(
         &record,
         &app_state.codex_home,
         &app_state.switch_backups_dir,
@@ -249,6 +249,7 @@ pub async fn activate_account(
             language,
             "Account activated",
             &repair_summary,
+            rollout_updates,
         )),
     )
     .map_err(|error| app_error_message(language, &error))
@@ -339,6 +340,7 @@ pub async fn enter_provider_mode(
             language,
             "Third-party Provider enabled",
             &repair_summary,
+            0,
         )),
     )
     .map_err(|error| app_error_message(language, &error))
@@ -375,6 +377,7 @@ pub async fn exit_provider_mode(
             language,
             "Restored normal ChatGPT mode",
             &repair_summary,
+            0,
         )),
     )
     .map_err(|error| app_error_message(language, &error))
@@ -454,8 +457,12 @@ pub fn spawn_activate_account_from_tray(
             let record = vault
                 .load_record(&account_id)
                 .map_err(|error| app_error_message(language, &error))?;
-            safely_activate_account_record(&record, &state.codex_home, &state.switch_backups_dir)
-                .map_err(|error| app_error_message(language, &error))?;
+            let (_restore_point, _rollout_updates) = safely_activate_account_record_with_rollout(
+                &record,
+                &state.codex_home,
+                &state.switch_backups_dir,
+            )
+            .map_err(|error| app_error_message(language, &error))?;
             repair_local_threads(&state)
                 .await
                 .map_err(|error| app_error_message(language, &error))?;
@@ -483,13 +490,14 @@ fn switch_success_message(
     language: ResolvedAppLanguage,
     english_prefix: &'static str,
     repair_summary: &OfficialRepairSummary,
+    rollout_updates: usize,
 ) -> String {
     let prefix = localize(
         language,
         LocalizedText::new(english_prefix, "\u{64cd}\u{4f5c}\u{5df2}\u{5b8c}\u{6210}"),
     );
     format!(
-        "{prefix}. Repair: +{} ~{} index {}",
+        "{prefix}. Rollout: {rollout_updates}. Repair: +{} ~{} index {}",
         repair_summary.created_threads,
         repair_summary.updated_threads,
         repair_summary.updated_session_index_entries

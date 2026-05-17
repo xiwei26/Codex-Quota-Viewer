@@ -18,6 +18,7 @@ mod localization;
 mod provider_mode;
 mod quota;
 mod restore_points;
+mod rollout_sync;
 mod scheduler;
 mod session_manager;
 mod settings;
