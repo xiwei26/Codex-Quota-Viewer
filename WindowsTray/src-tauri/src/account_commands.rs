@@ -326,8 +326,13 @@ pub async fn enter_provider_mode(
     let record = vault
         .load_record(&account_id)
         .map_err(|error| app_error_message(language, &error))?;
-    enter_provider_mode_files(&record, &app_state.codex_home, &app_state.provider_mode_dir)
-        .map_err(|error| app_error_message(language, &error))?;
+    let (_provider_state, rollout_updates) = enter_provider_mode_files(
+        &record,
+        &app_state.codex_home,
+        &app_state.provider_mode_dir,
+        &app_state.switch_backups_dir,
+    )
+    .map_err(|error| app_error_message(language, &error))?;
     let repair_summary = repair_local_threads(&app_state)
         .await
         .map_err(|error| app_error_message(language, &error))?;
@@ -340,7 +345,7 @@ pub async fn enter_provider_mode(
             language,
             "Third-party Provider enabled",
             &repair_summary,
-            0,
+            rollout_updates,
         )),
     )
     .map_err(|error| app_error_message(language, &error))
@@ -363,8 +368,12 @@ pub async fn exit_provider_mode(
     let app_state = state.inner().clone();
     let language = super::current_resolved_language(&app_state).await;
     let vault = AccountVault::new(app_state.accounts_dir.clone());
-    exit_provider_mode_files(&app_state.codex_home, &app_state.provider_mode_dir)
-        .map_err(|error| app_error_message(language, &error))?;
+    exit_provider_mode_files(
+        &app_state.codex_home,
+        &app_state.provider_mode_dir,
+        &app_state.switch_backups_dir,
+    )
+    .map_err(|error| app_error_message(language, &error))?;
     let repair_summary = repair_local_threads(&app_state)
         .await
         .map_err(|error| app_error_message(language, &error))?;

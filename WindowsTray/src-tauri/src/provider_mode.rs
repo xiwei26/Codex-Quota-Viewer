@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::account_models::{AccountPayload, VaultAccountRecord};
 use crate::codex_desktop;
 use crate::errors::AppError;
+use crate::restore_points::RestorePointManager;
+use crate::rollout_sync::{planned_rollout_updates, sync_rollout_providers};
 
 const STATE_FILE: &str = "chatgpt-provider-mode.json";
 const AUTH_FILE: &str = "auth.json";
@@ -15,6 +17,8 @@ const CONFIG_FILE: &str = "config.toml";
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderModeState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restore_point_id: Option<String>,
     pub provider_account_id: String,
     pub provider_display_name: String,
     pub activated_at: DateTime<Utc>,
@@ -38,7 +42,8 @@ pub fn enter_provider_mode(
     record: &VaultAccountRecord,
     codex_home: &Path,
     state_dir: &Path,
-) -> Result<ProviderModeState, AppError> {
+    switch_backups_dir: &Path,
+) -> Result<(ProviderModeState, usize), AppError> {
     let payload = match &record.payload {
         AccountPayload::Api(payload) => payload,
         AccountPayload::ChatGpt { .. } => {
@@ -64,7 +69,6 @@ pub fn enter_provider_mode(
         ));
     }
 
-    let desktop_session = codex_desktop::close_if_running()?;
     fs::create_dir_all(codex_home).map_err(|error| {
         provider_error(format!(
             "create Codex home {}: {error}",
@@ -78,12 +82,19 @@ pub fn enter_provider_mode(
         ))
     })?;
 
-    write_backup_file(state_dir, AUTH_FILE, Some(&auth_data))?;
     let config_path = codex_home.join(CONFIG_FILE);
-    let config_data = fs::read(&config_path).ok();
-    write_backup_file(state_dir, CONFIG_FILE, config_data.as_deref())?;
+    let rollout_files = planned_rollout_updates(codex_home, "OpenAI")?;
+    let files_to_backup = provider_mode_restore_files(codex_home, state_dir, rollout_files);
+    let restore_manager = RestorePointManager::new(switch_backups_dir.to_path_buf());
+    let restore_point = restore_manager.create_restore_point(
+        "chatgpt-provider-mode",
+        &format!("Use third-party Provider {}", record.metadata.display_name),
+        &files_to_backup,
+    )?;
+    let desktop_session = codex_desktop::close_if_running()?;
 
     let state = ProviderModeState {
+        restore_point_id: Some(restore_point.id.clone()),
         provider_account_id: record.id.as_str().to_string(),
         provider_display_name: record.metadata.display_name.clone(),
         activated_at: Utc::now(),
@@ -96,21 +107,56 @@ pub fn enter_provider_mode(
         payload.model.as_deref(),
     );
 
-    replace_file(&auth_path, &provider_auth_data)?;
-    replace_file(&config_path, provider_config.as_bytes())?;
-    let state_data = serde_json::to_vec_pretty(&state)
-        .map_err(|error| provider_error(format!("serialize Provider mode state: {error}")))?;
-    replace_file(&state_path(state_dir), &state_data)?;
+    let result = (|| {
+        replace_file(&auth_path, &provider_auth_data)?;
+        replace_file(&config_path, provider_config.as_bytes())?;
+        let state_data = serde_json::to_vec_pretty(&state)
+            .map_err(|error| provider_error(format!("serialize Provider mode state: {error}")))?;
+        replace_file(&state_path(state_dir), &state_data)?;
+        let rollout_result = sync_rollout_providers(codex_home, "OpenAI")?;
+        Ok::<usize, AppError>(rollout_result.updated_files.len())
+    })();
 
-    codex_desktop::reopen_if_needed(&desktop_session)?;
-    Ok(state)
+    match result {
+        Ok(updated_rollouts) => {
+            codex_desktop::reopen_if_needed(&desktop_session)?;
+            Ok((state, updated_rollouts))
+        }
+        Err(error) => {
+            let restore_dir = switch_backups_dir.join(&restore_point.id);
+            if let Err(restore_error) =
+                restore_manager.restore_manifest(&restore_dir, &restore_point)
+            {
+                let _ = codex_desktop::reopen_if_needed(&desktop_session);
+                return Err(restore_error);
+            }
+            let _ = codex_desktop::reopen_if_needed(&desktop_session);
+            Err(error)
+        }
+    }
 }
 
-pub fn exit_provider_mode(codex_home: &Path, state_dir: &Path) -> Result<(), AppError> {
+pub fn exit_provider_mode(
+    codex_home: &Path,
+    state_dir: &Path,
+    switch_backups_dir: &Path,
+) -> Result<(), AppError> {
     let desktop_session = codex_desktop::close_if_running()?;
-    if load_provider_mode_state(state_dir)?.is_none() {
+    let Some(state) = load_provider_mode_state(state_dir)? else {
         let _ = codex_desktop::reopen_if_needed(&desktop_session);
         return Err(AppError::ProviderModeNotActive);
+    };
+
+    if let Some(restore_point_id) = state.restore_point_id {
+        let manager = RestorePointManager::new(switch_backups_dir.to_path_buf());
+        let restore_dir = switch_backups_dir.join(&restore_point_id);
+        let manifest = read_restore_manifest(&restore_dir)?;
+        if let Err(error) = manager.restore_manifest(&restore_dir, &manifest) {
+            let _ = codex_desktop::reopen_if_needed(&desktop_session);
+            return Err(error);
+        }
+        codex_desktop::reopen_if_needed(&desktop_session)?;
+        return Ok(());
     }
 
     let auth_backup = backup_path(state_dir, AUTH_FILE);
@@ -160,6 +206,35 @@ pub fn exit_provider_mode(codex_home: &Path, state_dir: &Path) -> Result<(), App
     })?;
     codex_desktop::reopen_if_needed(&desktop_session)?;
     Ok(())
+}
+
+fn provider_mode_restore_files(
+    codex_home: &Path,
+    state_dir: &Path,
+    rollout_files: Vec<PathBuf>,
+) -> Vec<PathBuf> {
+    let mut files = vec![
+        codex_home.join(AUTH_FILE),
+        codex_home.join(CONFIG_FILE),
+        state_path(state_dir),
+    ];
+    files.extend(rollout_files);
+    files
+}
+
+fn read_restore_manifest(
+    restore_dir: &Path,
+) -> Result<crate::restore_points::RestorePointManifest, AppError> {
+    let path = restore_dir.join("manifest.json");
+    let data = fs::read(&path).map_err(|error| {
+        provider_error(format!("read restore manifest {}: {error}", path.display()))
+    })?;
+    serde_json::from_slice(&data).map_err(|error| {
+        provider_error(format!(
+            "decode restore manifest {}: {error}",
+            path.display()
+        ))
+    })
 }
 
 fn looks_like_chatgpt_auth(auth_json: &serde_json::Value) -> bool {
@@ -219,29 +294,6 @@ fn normalized_provider_base_url(raw: &str) -> String {
     } else {
         format!("{trimmed}/v1")
     }
-}
-
-fn write_backup_file(state_dir: &Path, name: &str, data: Option<&[u8]>) -> Result<(), AppError> {
-    let data_path = backup_path(state_dir, name);
-    let marker_path = backup_missing_marker_path(state_dir, name);
-    match data {
-        Some(data) => {
-            replace_file(&data_path, data)?;
-            let _ = fs::remove_file(marker_path);
-        }
-        None => {
-            if data_path.exists() {
-                fs::remove_file(&data_path).map_err(|error| {
-                    provider_error(format!(
-                        "remove stale backup {}: {error}",
-                        data_path.display()
-                    ))
-                })?;
-            }
-            replace_file(&marker_path, b"missing")?;
-        }
-    }
-    Ok(())
 }
 
 fn replace_file(path: &Path, data: &[u8]) -> Result<(), AppError> {
@@ -318,6 +370,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let codex_home = temp.path().join(".codex");
         let state_dir = temp.path().join("provider-mode");
+        let backups = temp.path().join("backups");
         fs::create_dir_all(&codex_home).unwrap();
         fs::write(
             codex_home.join(AUTH_FILE),
@@ -326,11 +379,14 @@ mod tests {
         .unwrap();
         fs::write(codex_home.join(CONFIG_FILE), b"model = \"gpt-5\"\n").unwrap();
 
-        let state = enter_provider_mode(&api_record(), &codex_home, &state_dir).unwrap();
+        let (state, updated_rollouts) =
+            enter_provider_mode(&api_record(), &codex_home, &state_dir, &backups).unwrap();
 
         let auth = fs::read_to_string(codex_home.join(AUTH_FILE)).unwrap();
         let config = fs::read_to_string(codex_home.join(CONFIG_FILE)).unwrap();
         assert_eq!(state.provider_account_id, "acct-api");
+        assert_eq!(updated_rollouts, 0);
+        assert!(state.restore_point_id.is_some());
         assert!(auth.contains("\"auth_mode\": \"chatgpt\""));
         assert!(auth.contains("\"OPENAI_API_KEY\": null"));
         assert!(config.contains("model_provider = \"OpenAI\""));
@@ -344,6 +400,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let codex_home = temp.path().join(".codex");
         let state_dir = temp.path().join("provider-mode");
+        let backups = temp.path().join("backups");
         fs::create_dir_all(&codex_home).unwrap();
         fs::write(
             codex_home.join(AUTH_FILE),
@@ -351,9 +408,22 @@ mod tests {
         )
         .unwrap();
         fs::write(codex_home.join(CONFIG_FILE), b"model = \"before\"\n").unwrap();
+        let session_dir = codex_home.join("sessions");
+        fs::create_dir_all(&session_dir).unwrap();
+        let rollout_file = session_dir.join("thread.jsonl");
+        fs::write(
+            &rollout_file,
+            "{\"type\":\"session_meta\",\"payload\":{\"model_provider\":\"openai\"}}\n",
+        )
+        .unwrap();
 
-        enter_provider_mode(&api_record(), &codex_home, &state_dir).unwrap();
-        exit_provider_mode(&codex_home, &state_dir).unwrap();
+        let (_state, updated_rollouts) =
+            enter_provider_mode(&api_record(), &codex_home, &state_dir, &backups).unwrap();
+        assert_eq!(updated_rollouts, 1);
+        assert!(fs::read_to_string(&rollout_file)
+            .unwrap()
+            .contains("\"model_provider\":\"OpenAI\""));
+        exit_provider_mode(&codex_home, &state_dir, &backups).unwrap();
 
         assert_eq!(
             fs::read_to_string(codex_home.join(CONFIG_FILE)).unwrap(),
@@ -362,6 +432,9 @@ mod tests {
         assert!(fs::read_to_string(codex_home.join(AUTH_FILE))
             .unwrap()
             .contains("ada@example.com"));
+        assert!(fs::read_to_string(rollout_file)
+            .unwrap()
+            .contains("\"model_provider\":\"openai\""));
         assert!(!state_path(&state_dir).exists());
     }
 
@@ -370,10 +443,11 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let codex_home = temp.path().join(".codex");
         let state_dir = temp.path().join("provider-mode");
+        let backups = temp.path().join("backups");
         fs::create_dir_all(&codex_home).unwrap();
         fs::write(codex_home.join(AUTH_FILE), br#"{"auth_mode":"apikey"}"#).unwrap();
 
-        let result = enter_provider_mode(&api_record(), &codex_home, &state_dir);
+        let result = enter_provider_mode(&api_record(), &codex_home, &state_dir, &backups);
 
         assert!(matches!(result, Err(AppError::ProviderModeFailed(_))));
     }

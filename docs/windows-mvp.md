@@ -24,6 +24,8 @@ The Windows MVP is a Tauri-based system tray app for Codex Quota Viewer.
   file changes and reopens it afterward when it was running.
 - Automatically repairs local official thread metadata through the bundled
   Session Manager after Safe Switch and Provider-mode changes.
+- Synchronizes historical session JSONL rollout provider metadata during Safe
+  Switch and Provider-mode entry, with rollback coverage.
 - Uses a saved API account as a third-party Provider while keeping the current
   ChatGPT login active.
 - Restores the previous `auth.json` and `config.toml` when leaving
@@ -62,18 +64,23 @@ to run the same repair flow manually.
 ## Third-party Provider Mode
 
 Windows can now mirror the macOS 1.2.0 Provider-mode workflow at the account
-file level. In **Settings... -> Accounts**, choose a saved API account and use
-**Use as Provider**. The app backs up the current `auth.json` and
-`config.toml`, keeps the active Codex auth in ChatGPT mode, and writes a
-third-party OpenAI-compatible provider into `config.toml`.
+and local-session metadata level. In **Settings... -> Accounts**, choose a
+saved API account and use **Use as Provider**. The app creates a restore point
+for the current `auth.json`, `config.toml`, Provider-mode state, and any
+historical session JSONL files that need rollout provider synchronization. It
+keeps the active Codex auth in ChatGPT mode, writes a third-party
+OpenAI-compatible provider into `config.toml`, and updates rollout provider
+metadata to match.
 
-Use **Switch Back from Provider** to restore the previous files. Provider-mode
-entry and exit also use the same Codex desktop close/reopen guard.
+Use **Switch Back from Provider** to restore the Provider-mode restore point.
+Provider-mode entry and exit also use the same Codex desktop close/reopen
+guard. Older Provider-mode state files created by earlier Windows builds can
+still be exited through the legacy `.bak` restore path.
 
 ## Not Included In The MVP
 
-- Provider-mode entry and exit still use their own file backup path instead of
-  the full Safe Switch restore-point flow used by normal account activation.
+- Windows does not yet expose the macOS local thread sync inspector UI that
+  summarizes provider counts before a switch.
 
 ## Build
 
