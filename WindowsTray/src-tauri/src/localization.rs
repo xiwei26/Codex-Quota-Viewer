@@ -90,6 +90,14 @@ pub fn app_error_message(language: ResolvedAppLanguage, error: &AppError) -> Str
         AppError::AccountActivationFailed(_) => {
             LocalizedText::new("Account activation failed", "Account activation failed")
         }
+        AppError::ProviderModeFailed(_) => LocalizedText::new(
+            "Third-party Provider mode failed",
+            "Third-party Provider mode failed",
+        ),
+        AppError::ProviderModeNotActive => LocalizedText::new(
+            "Third-party Provider mode is not active",
+            "Third-party Provider mode is not active",
+        ),
     };
     localize(language, text)
 }

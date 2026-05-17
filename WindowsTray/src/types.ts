@@ -48,6 +48,12 @@ export type AccountRow = {
   status: string;
 };
 
+export type ProviderModeState = {
+  providerAccountId: string;
+  providerDisplayName: string;
+  activatedAt: string;
+};
+
 export type AccountsPresentation = {
   labels: {
     accounts: string;
@@ -57,9 +63,13 @@ export type AccountsPresentation = {
     activate: string;
     rename: string;
     forget: string;
+    switchToProvider: string;
+    switchBackFromProvider: string;
+    providerModeActive: string;
     current: string;
     noSavedAccounts: string;
   };
   rows: AccountRow[];
+  providerMode: ProviderModeState | null;
   message: string | null;
 };

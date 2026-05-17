@@ -6,6 +6,10 @@ use crate::account_vault::AccountVault;
 use crate::app_state::SharedAppState;
 use crate::errors::AppError;
 use crate::localization::{app_error_message, localize, LocalizedText};
+use crate::provider_mode::{
+    enter_provider_mode as enter_provider_mode_files,
+    exit_provider_mode as exit_provider_mode_files, load_provider_mode_state, ProviderModeState,
+};
 use crate::settings::ResolvedAppLanguage;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -28,6 +32,9 @@ pub struct AccountLabels {
     pub activate: String,
     pub rename: String,
     pub forget: String,
+    pub switch_to_provider: String,
+    pub switch_back_from_provider: String,
+    pub provider_mode_active: String,
     pub current: String,
     pub no_saved_accounts: String,
 }
@@ -37,6 +44,7 @@ pub struct AccountLabels {
 pub struct AccountsPresentation {
     pub labels: AccountLabels,
     pub rows: Vec<AccountRow>,
+    pub provider_mode: Option<ProviderModeState>,
     pub message: Option<String>,
 }
 
@@ -88,6 +96,24 @@ pub fn build_accounts_presentation(
                 LocalizedText::new("Rename", "\u{91cd}\u{547d}\u{540d}"),
             ),
             forget: localize(language, LocalizedText::new("Forget", "\u{79fb}\u{9664}")),
+            switch_to_provider: localize(
+                language,
+                LocalizedText::new("Use as Provider", "\u{7528}\u{4f5c} Provider"),
+            ),
+            switch_back_from_provider: localize(
+                language,
+                LocalizedText::new(
+                    "Switch Back from Provider",
+                    "\u{9000}\u{51fa} Provider \u{6a21}\u{5f0f}",
+                ),
+            ),
+            provider_mode_active: localize(
+                language,
+                LocalizedText::new(
+                    "Third-party Provider mode is active",
+                    "\u{7b2c}\u{4e09}\u{65b9} Provider \u{6a21}\u{5f0f}\u{5df2}\u{5f00}\u{542f}",
+                ),
+            ),
             current: localize(language, LocalizedText::new("Current", "\u{5f53}\u{524d}")),
             no_saved_accounts: localize(
                 language,
@@ -98,8 +124,20 @@ pub fn build_accounts_presentation(
             ),
         },
         rows,
+        provider_mode: None,
         message: message.or(listed.issue),
     })
+}
+
+pub fn build_accounts_presentation_with_provider_mode(
+    vault: &AccountVault,
+    provider_mode_dir: &std::path::Path,
+    language: ResolvedAppLanguage,
+    message: Option<String>,
+) -> Result<AccountsPresentation, AppError> {
+    let mut presentation = build_accounts_presentation(vault, language, message)?;
+    presentation.provider_mode = load_provider_mode_state(provider_mode_dir)?;
+    Ok(presentation)
 }
 
 #[tauri::command]
@@ -109,8 +147,13 @@ pub async fn get_accounts(
     let app_state = state.inner().clone();
     let language = super::current_resolved_language(&app_state).await;
     let vault = AccountVault::new(app_state.accounts_dir.clone());
-    build_accounts_presentation(&vault, language, None)
-        .map_err(|error| app_error_message(language, &error))
+    build_accounts_presentation_with_provider_mode(
+        &vault,
+        &app_state.provider_mode_dir,
+        language,
+        None,
+    )
+    .map_err(|error| app_error_message(language, &error))
 }
 
 #[tauri::command]
@@ -124,8 +167,9 @@ pub async fn import_current_chatgpt_account(
     vault
         .import_current_chatgpt_account(&app_state.codex_home, display_name)
         .map_err(|error| app_error_message(language, &error))?;
-    build_accounts_presentation(
+    build_accounts_presentation_with_provider_mode(
         &vault,
+        &app_state.provider_mode_dir,
         language,
         Some(localize(
             language,
@@ -146,8 +190,9 @@ pub async fn add_api_account(
     vault
         .add_api_account(input)
         .map_err(|error| app_error_message(language, &error))?;
-    build_accounts_presentation(
+    build_accounts_presentation_with_provider_mode(
         &vault,
+        &app_state.provider_mode_dir,
         language,
         Some(localize(
             language,
@@ -166,20 +211,88 @@ pub async fn activate_account(
     let app_state = state.inner().clone();
     let language = super::current_resolved_language(&app_state).await;
     let vault = AccountVault::new(app_state.accounts_dir.clone());
+    ensure_provider_mode_inactive(&app_state.provider_mode_dir)
+        .map_err(|error| app_error_message(language, &error))?;
     let record = vault
         .load_record(&account_id)
         .map_err(|error| app_error_message(language, &error))?;
     activate_account_record(&record, &app_state.codex_home)
         .map_err(|error| app_error_message(language, &error))?;
     super::spawn_refresh(app, app_state.clone());
-    build_accounts_presentation(
+    build_accounts_presentation_with_provider_mode(
         &vault,
+        &app_state.provider_mode_dir,
         language,
         Some(localize(
             language,
             LocalizedText::new(
                 "Account activated",
                 "\u{8d26}\u{53f7}\u{5df2}\u{6fc0}\u{6d3b}",
+            ),
+        )),
+    )
+    .map_err(|error| app_error_message(language, &error))
+}
+
+#[tauri::command]
+pub async fn enter_provider_mode(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, SharedAppState>,
+    account_id: String,
+) -> Result<AccountsPresentation, String> {
+    let app_state = state.inner().clone();
+    let language = super::current_resolved_language(&app_state).await;
+    let vault = AccountVault::new(app_state.accounts_dir.clone());
+    let record = vault
+        .load_record(&account_id)
+        .map_err(|error| app_error_message(language, &error))?;
+    enter_provider_mode_files(&record, &app_state.codex_home, &app_state.provider_mode_dir)
+        .map_err(|error| app_error_message(language, &error))?;
+    super::spawn_refresh(app, app_state.clone());
+    build_accounts_presentation_with_provider_mode(
+        &vault,
+        &app_state.provider_mode_dir,
+        language,
+        Some(localize(
+            language,
+            LocalizedText::new(
+                "Third-party Provider enabled",
+                "\u{7b2c}\u{4e09}\u{65b9} Provider \u{5df2}\u{5f00}\u{542f}",
+            ),
+        )),
+    )
+    .map_err(|error| app_error_message(language, &error))
+}
+
+fn ensure_provider_mode_inactive(provider_mode_dir: &std::path::Path) -> Result<(), AppError> {
+    if load_provider_mode_state(provider_mode_dir)?.is_some() {
+        return Err(AppError::ProviderModeFailed(
+            "switch back from third-party Provider mode before activating another account".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn exit_provider_mode(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, SharedAppState>,
+) -> Result<AccountsPresentation, String> {
+    let app_state = state.inner().clone();
+    let language = super::current_resolved_language(&app_state).await;
+    let vault = AccountVault::new(app_state.accounts_dir.clone());
+    exit_provider_mode_files(&app_state.codex_home, &app_state.provider_mode_dir)
+        .map_err(|error| app_error_message(language, &error))?;
+    super::spawn_refresh(app, app_state.clone());
+    build_accounts_presentation_with_provider_mode(
+        &vault,
+        &app_state.provider_mode_dir,
+        language,
+        Some(localize(
+            language,
+            LocalizedText::new(
+                "Restored normal ChatGPT mode",
+                "\u{5df2}\u{6062}\u{590d}\u{666e}\u{901a} ChatGPT \u{6a21}\u{5f0f}",
             ),
         )),
     )
@@ -198,8 +311,9 @@ pub async fn rename_account(
     vault
         .rename_account(&account_id, &display_name)
         .map_err(|error| app_error_message(language, &error))?;
-    build_accounts_presentation(
+    build_accounts_presentation_with_provider_mode(
         &vault,
+        &app_state.provider_mode_dir,
         language,
         Some(localize(
             language,
@@ -223,8 +337,9 @@ pub async fn forget_account(
     vault
         .forget_account(&account_id)
         .map_err(|error| app_error_message(language, &error))?;
-    build_accounts_presentation(
+    build_accounts_presentation_with_provider_mode(
         &vault,
+        &app_state.provider_mode_dir,
         language,
         Some(localize(
             language,
@@ -253,6 +368,8 @@ pub fn spawn_activate_account_from_tray(
         let language = super::current_resolved_language(&state).await;
         let vault = AccountVault::new(state.accounts_dir.clone());
         let result = async {
+            ensure_provider_mode_inactive(&state.provider_mode_dir)
+                .map_err(|error| app_error_message(language, &error))?;
             let record = vault
                 .load_record(&account_id)
                 .map_err(|error| app_error_message(language, &error))?;

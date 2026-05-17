@@ -133,3 +133,14 @@ select {
 .account-row small {
   display: block;
 }
+
+.provider-mode-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #a6c7ff;
+  border-radius: 8px;
+  background: #eef5ff;
+}

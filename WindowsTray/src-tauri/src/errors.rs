@@ -17,6 +17,8 @@ pub enum AppError {
     AccountValidationFailed(String),
     AccountNotFound(String),
     AccountActivationFailed(String),
+    ProviderModeFailed(String),
+    ProviderModeNotActive,
 }
 
 impl AppError {
@@ -37,6 +39,8 @@ impl AppError {
             Self::AccountValidationFailed(_) => "Account information is invalid",
             Self::AccountNotFound(_) => "Account not found",
             Self::AccountActivationFailed(_) => "Account activation failed",
+            Self::ProviderModeFailed(_) => "Third-party Provider mode failed",
+            Self::ProviderModeNotActive => "Third-party Provider mode is not active",
         }
     }
 
@@ -50,7 +54,8 @@ impl AppError {
             | Self::AccountVaultFailed(message)
             | Self::AccountValidationFailed(message)
             | Self::AccountNotFound(message)
-            | Self::AccountActivationFailed(message) => Some(message),
+            | Self::AccountActivationFailed(message)
+            | Self::ProviderModeFailed(message) => Some(message),
             _ => None,
         }
     }

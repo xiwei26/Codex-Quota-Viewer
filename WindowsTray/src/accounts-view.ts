@@ -7,6 +7,13 @@ export function renderAccounts(
   onUpdated: (next: AccountsPresentation) => void,
 ): string {
   queueMicrotask(() => bindAccountControls(onUpdated));
+  const providerMode = presentation.providerMode;
+  const providerModeBanner = providerMode
+    ? `<div class="provider-mode-banner">
+        <span>${escapeHtml(presentation.labels.providerModeActive)}: ${escapeHtml(providerMode.providerDisplayName)}</span>
+        <button data-action="exit-provider">${escapeHtml(presentation.labels.switchBackFromProvider)}</button>
+      </div>`
+    : "";
   const rows = presentation.rows.length
     ? presentation.rows.map((row) => `
       <div class="account-row" data-account-id="${escapeHtml(row.id)}">
@@ -16,7 +23,8 @@ export function renderAccounts(
           <small>${escapeHtml(row.status)}</small>
         </div>
         <div class="account-actions">
-          <button data-action="activate" data-account-id="${escapeHtml(row.id)}">${escapeHtml(presentation.labels.activate)}</button>
+          ${!providerMode ? `<button data-action="activate" data-account-id="${escapeHtml(row.id)}">${escapeHtml(presentation.labels.activate)}</button>` : ""}
+          ${row.kind === "api" && !providerMode ? `<button data-action="provider" data-account-id="${escapeHtml(row.id)}">${escapeHtml(presentation.labels.switchToProvider)}</button>` : ""}
           <button data-action="rename" data-account-id="${escapeHtml(row.id)}">${escapeHtml(presentation.labels.rename)}</button>
           <button data-action="forget" data-account-id="${escapeHtml(row.id)}">${escapeHtml(presentation.labels.forget)}</button>
         </div>
@@ -26,6 +34,7 @@ export function renderAccounts(
 
   return `
     <section class="accounts-panel">
+      ${providerModeBanner}
       <div class="accounts-toolbar">
         <button id="importChatGpt">${escapeHtml(presentation.labels.signInWithChatgpt)}</button>
         <button id="showApiForm">${escapeHtml(presentation.labels.addApiAccount)}</button>
@@ -84,6 +93,12 @@ function bindAccountControls(onUpdated: (next: AccountsPresentation) => void): v
         if (displayName) {
           onUpdated(await invoke<AccountsPresentation>("rename_account", { accountId, displayName }));
         }
+      }
+      if (action === "provider" && confirm("Use this API account as the third-party Provider for the current ChatGPT login? This backs up and updates auth.json/config.toml.")) {
+        onUpdated(await invoke<AccountsPresentation>("enter_provider_mode", { accountId }));
+      }
+      if (action === "exit-provider" && confirm("Switch back from third-party Provider mode and restore the previous auth.json/config.toml?")) {
+        onUpdated(await invoke<AccountsPresentation>("exit_provider_mode"));
       }
       if (action === "forget" && confirm("Forget this account?")) {
         onUpdated(await invoke<AccountsPresentation>("forget_account", { accountId }));

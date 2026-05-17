@@ -14,6 +14,7 @@ mod codex_home;
 mod errors;
 mod launch_at_login;
 mod localization;
+mod provider_mode;
 mod quota;
 mod scheduler;
 mod session_manager;
@@ -108,6 +109,8 @@ fn main() {
             account_commands::import_current_chatgpt_account,
             account_commands::add_api_account,
             account_commands::activate_account,
+            account_commands::enter_provider_mode,
+            account_commands::exit_provider_mode,
             account_commands::rename_account,
             account_commands::forget_account,
             account_commands::open_vault_folder
@@ -131,6 +134,7 @@ fn main() {
             };
             let settings_path = app_data_dir.join("settings.json");
             let accounts_dir = app_data_dir.join("Accounts");
+            let provider_mode_dir = app_data_dir.join("ProviderMode");
             let settings_result = load_settings(&settings_path);
             let settings = settings_result.settings.clone();
 
@@ -138,6 +142,7 @@ fn main() {
                 codex_home,
                 settings_path,
                 accounts_dir,
+                provider_mode_dir,
                 settings: tauri::async_runtime::Mutex::new(settings.clone()),
                 settings_load_issue: tauri::async_runtime::Mutex::new(settings_result.issue),
                 tray_snapshot: tauri::async_runtime::Mutex::new(TraySnapshot::loading()),
@@ -153,8 +158,13 @@ fn main() {
             let resolved_language =
                 resolve_language(settings.app_language, &system_language_hints());
             let vault = account_vault::AccountVault::new(state.accounts_dir.clone());
-            let accounts =
-                account_commands::build_accounts_presentation(&vault, resolved_language, None).ok();
+            let accounts = account_commands::build_accounts_presentation_with_provider_mode(
+                &vault,
+                &state.provider_mode_dir,
+                resolved_language,
+                None,
+            )
+            .ok();
             tray::install_tray(
                 &app_handle,
                 &TraySnapshot::loading(),
@@ -231,7 +241,13 @@ pub(crate) async fn update_tray_from_state(app: &AppHandle, state: &SharedAppSta
     let snapshot = state.tray_snapshot.lock().await.clone();
     let language = current_resolved_language(state).await;
     let vault = account_vault::AccountVault::new(state.accounts_dir.clone());
-    let accounts = account_commands::build_accounts_presentation(&vault, language, None).ok();
+    let accounts = account_commands::build_accounts_presentation_with_provider_mode(
+        &vault,
+        &state.provider_mode_dir,
+        language,
+        None,
+    )
+    .ok();
     let _ = tray::update_tray_menu(app, &snapshot, language, accounts.as_ref());
 }
 
