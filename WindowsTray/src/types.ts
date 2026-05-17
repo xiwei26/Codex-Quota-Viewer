@@ -61,6 +61,7 @@ export type AccountsPresentation = {
     addApiAccount: string;
     openVaultFolder: string;
     rollbackLastChange: string;
+    repairNow: string;
     activate: string;
     rename: string;
     forget: string;

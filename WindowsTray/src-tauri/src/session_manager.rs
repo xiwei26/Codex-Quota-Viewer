@@ -18,6 +18,21 @@ pub struct SessionManager {
     owned_child: Option<tokio::process::Child>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OfficialRepairSummary {
+    pub created_threads: u32,
+    pub updated_threads: u32,
+    pub updated_session_index_entries: u32,
+    pub removed_broken_threads: u32,
+    pub hidden_snapshot_only_sessions: u32,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct RepairEnvelope {
+    stats: OfficialRepairSummary,
+}
+
 impl SessionManager {
     pub fn new(paths: SessionManagerPaths) -> Self {
         Self {
@@ -89,12 +104,41 @@ impl SessionManager {
         Ok(started)
     }
 
+    pub async fn rescan_and_repair(&mut self) -> Result<OfficialRepairSummary, AppError> {
+        self.ensure_running().await?;
+        let _: serde_json::Value =
+            post_json_empty("http://127.0.0.1:4318/api/sessions/rescan").await?;
+        let envelope: RepairEnvelope =
+            post_json_empty("http://127.0.0.1:4318/api/codex/repair").await?;
+        Ok(envelope.stats)
+    }
+
     pub async fn stop_owned_process(&mut self) {
         if let Some(child) = self.owned_child.as_mut() {
             let _ = child.kill().await;
         }
         self.owned_child = None;
     }
+}
+
+async fn post_json_empty<T: serde::de::DeserializeOwned>(url: &str) -> Result<T, AppError> {
+    let response = reqwest::Client::new()
+        .post(url)
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .map_err(|error| AppError::RepairFailed(error.to_string()))?;
+    let status = response.status();
+    let body = response
+        .bytes()
+        .await
+        .map_err(|error| AppError::RepairFailed(error.to_string()))?;
+    if !status.is_success() {
+        return Err(AppError::RepairFailed(
+            String::from_utf8_lossy(&body).trim().to_string(),
+        ));
+    }
+    serde_json::from_slice(&body).map_err(|error| AppError::RepairFailed(error.to_string()))
 }
 
 pub fn classify_startup_diagnostics(text: &str) -> AppError {

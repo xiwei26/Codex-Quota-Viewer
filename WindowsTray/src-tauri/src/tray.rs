@@ -11,6 +11,7 @@ pub const MENU_ALL_ACCOUNTS: &str = "all_accounts";
 pub const MENU_ACCOUNT_PREFIX: &str = "activate_account:";
 pub const MENU_REFRESH: &str = "refresh_quota";
 pub const MENU_ROLLBACK: &str = "rollback_last_change";
+pub const MENU_REPAIR: &str = "repair_now";
 pub const MENU_SETTINGS: &str = "settings";
 pub const MENU_OPEN_SESSION_MANAGER: &str = "open_session_manager";
 pub const MENU_OPEN_CODEX_FOLDER: &str = "open_codex_folder";
@@ -85,6 +86,16 @@ pub fn build_menu(
                 "Rollback Last Change",
                 "\u{56de}\u{6eda}\u{6700}\u{8fd1}\u{66f4}\u{6539}",
             ),
+        ),
+        true,
+        None::<&str>,
+    )?;
+    let repair_item = MenuItem::with_id(
+        app,
+        MENU_REPAIR,
+        localize(
+            language,
+            LocalizedText::new("Repair Now", "\u{7acb}\u{5373}\u{4fee}\u{590d}"),
         ),
         true,
         None::<&str>,
@@ -201,6 +212,7 @@ pub fn build_menu(
     menu_items.extend([
         Box::new(refresh_item) as Box<dyn tauri::menu::IsMenuItem<tauri::Wry>>,
         Box::new(rollback_item),
+        Box::new(repair_item),
         Box::new(settings_item),
         Box::new(open_manager_item),
         Box::new(open_folder_item),

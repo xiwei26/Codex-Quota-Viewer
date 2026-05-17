@@ -31,6 +31,7 @@ pub struct AccountLabels {
     pub add_api_account: String,
     pub open_vault_folder: String,
     pub rollback_last_change: String,
+    pub repair_now: String,
     pub activate: String,
     pub rename: String,
     pub forget: String,
@@ -98,6 +99,10 @@ pub fn build_accounts_presentation(
                     "Rollback Last Change",
                     "\u{56de}\u{6eda}\u{6700}\u{8fd1}\u{66f4}\u{6539}",
                 ),
+            ),
+            repair_now: localize(
+                language,
+                LocalizedText::new("Repair Now", "\u{7acb}\u{5373}\u{4fee}\u{590d}"),
             ),
             activate: localize(language, LocalizedText::new("Activate", "\u{6fc0}\u{6d3b}")),
             rename: localize(
@@ -270,6 +275,42 @@ pub async fn rollback_last_change(
                 "\u{56de}\u{6eda}\u{5df2}\u{5b8c}\u{6210}",
             ),
         )),
+    )
+    .map_err(|error| app_error_message(language, &error))
+}
+
+#[tauri::command]
+pub async fn repair_now(
+    state: tauri::State<'_, SharedAppState>,
+) -> Result<AccountsPresentation, String> {
+    let app_state = state.inner().clone();
+    let language = super::current_resolved_language(&app_state).await;
+    let vault = AccountVault::new(app_state.accounts_dir.clone());
+    let summary = {
+        let mut manager = app_state.session_manager.lock().await;
+        manager
+            .rescan_and_repair()
+            .await
+            .map_err(|error| app_error_message(language, &error))?
+    };
+    build_accounts_presentation_with_provider_mode(
+        &vault,
+        &app_state.provider_mode_dir,
+        language,
+        Some(
+            localize(
+                language,
+                LocalizedText::new(
+                    "Repair complete",
+                    "\u{4fee}\u{590d}\u{5df2}\u{5b8c}\u{6210}",
+                ),
+            ) + &format!(
+                ": +{} ~{} index {}",
+                summary.created_threads,
+                summary.updated_threads,
+                summary.updated_session_index_entries
+            ),
+        ),
     )
     .map_err(|error| app_error_message(language, &error))
 }

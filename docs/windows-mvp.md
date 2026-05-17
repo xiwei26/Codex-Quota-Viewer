@@ -19,6 +19,9 @@ The Windows MVP is a Tauri-based system tray app for Codex Quota Viewer.
   point for `auth.json` and `config.toml`.
 - Rolls back the latest Safe Switch restore point from the Accounts page or
   tray menu.
+- Closes the Windows Codex desktop process before Safe Switch or Provider-mode
+  file changes and reopens it afterward when it was running.
+- Repairs local official thread metadata through the bundled Session Manager.
 - Uses a saved API account as a third-party Provider while keeping the current
   ChatGPT login active.
 - Restores the previous `auth.json` and `config.toml` when leaving
@@ -42,8 +45,14 @@ If activation fails after the restore point is created, the app automatically
 restores the previous files. You can also use **Rollback Last Change** from the
 Accounts page or tray menu to restore the latest Safe Switch restore point.
 
-This phase does not yet close/reopen Codex automatically or run the macOS
-thread/provider repair flow.
+The Windows app closes the Codex desktop process before Safe Switch writes and
+reopens it afterward when it was running. It filters out CLI `bin\codex.exe`
+processes so command-line Codex sessions are not targeted by the desktop
+control step.
+
+Use **Repair Now** from the Accounts page or tray menu to ask the bundled
+Session Manager to rescan local sessions and repair official Codex thread
+metadata.
 
 ## Third-party Provider Mode
 
@@ -53,14 +62,14 @@ file level. In **Settings... -> Accounts**, choose a saved API account and use
 `config.toml`, keeps the active Codex auth in ChatGPT mode, and writes a
 third-party OpenAI-compatible provider into `config.toml`.
 
-Use **Switch Back from Provider** to restore the previous files. This Windows
-phase does not yet close/reopen Codex automatically or run the macOS Safe
-Switch thread/provider repair flow.
+Use **Switch Back from Provider** to restore the previous files. Provider-mode
+entry and exit also use the same Codex desktop close/reopen guard.
 
 ## Not Included In The MVP
 
-- Codex close/reopen orchestration around account switching.
-- Thread/provider repair after account activation or Provider-mode changes.
+- Automatic repair immediately after every account activation or Provider-mode
+  change. Use **Repair Now** manually after switching when local thread metadata
+  needs to be aligned.
 
 ## Build
 

@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::account_models::{AccountPayload, VaultAccountRecord};
+use crate::codex_desktop;
 use crate::errors::AppError;
 use crate::restore_points::{RestorePointManager, RestorePointManifest};
 
@@ -20,12 +21,17 @@ pub fn safely_activate_account_record(
         &format!("Switch to {}", record.metadata.display_name),
         &files,
     )?;
+    let desktop_session = codex_desktop::close_if_running()?;
 
     match activate_account_record(record, codex_home) {
-        Ok(()) => Ok(restore_point),
+        Ok(()) => {
+            codex_desktop::reopen_if_needed(&desktop_session)?;
+            Ok(restore_point)
+        }
         Err(error) => {
             manager
                 .restore_manifest(&switch_backups_dir.join(&restore_point.id), &restore_point)?;
+            let _ = codex_desktop::reopen_if_needed(&desktop_session);
             Err(error)
         }
     }

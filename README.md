@@ -273,7 +273,9 @@ showing the current active Codex account quota, configurable refresh behavior,
 General and Accounts settings, saved ChatGPT/API accounts, direct account
 activation with Safe Switch restore points and rollback, third-party Provider
 mode for ChatGPT logins backed by saved API accounts, opening the bundled
-Session Manager, opening the local Codex folder, and clean quit.
+Session Manager, Repair Now for local official thread metadata, Codex desktop
+close/reopen guards around file-changing switches, opening the local Codex
+folder, and clean quit.
 
 Build it on Windows:
 

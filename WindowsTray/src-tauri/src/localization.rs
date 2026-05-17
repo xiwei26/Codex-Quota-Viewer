@@ -106,6 +106,11 @@ pub fn app_error_message(language: ResolvedAppLanguage, error: &AppError) -> Str
             "No restore point is available",
             "No restore point is available",
         ),
+        AppError::RepairFailed(_) => LocalizedText::new("Repair failed", "Repair failed"),
+        AppError::CodexDesktopControlFailed(_) => LocalizedText::new(
+            "Codex desktop control failed",
+            "Codex desktop control failed",
+        ),
     };
     localize(language, text)
 }

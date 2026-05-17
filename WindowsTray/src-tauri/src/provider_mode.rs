@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::account_models::{AccountPayload, VaultAccountRecord};
+use crate::codex_desktop;
 use crate::errors::AppError;
 
 const STATE_FILE: &str = "chatgpt-provider-mode.json";
@@ -63,6 +64,7 @@ pub fn enter_provider_mode(
         ));
     }
 
+    let desktop_session = codex_desktop::close_if_running()?;
     fs::create_dir_all(codex_home).map_err(|error| {
         provider_error(format!(
             "create Codex home {}: {error}",
@@ -100,11 +102,14 @@ pub fn enter_provider_mode(
         .map_err(|error| provider_error(format!("serialize Provider mode state: {error}")))?;
     replace_file(&state_path(state_dir), &state_data)?;
 
+    codex_desktop::reopen_if_needed(&desktop_session)?;
     Ok(state)
 }
 
 pub fn exit_provider_mode(codex_home: &Path, state_dir: &Path) -> Result<(), AppError> {
+    let desktop_session = codex_desktop::close_if_running()?;
     if load_provider_mode_state(state_dir)?.is_none() {
+        let _ = codex_desktop::reopen_if_needed(&desktop_session);
         return Err(AppError::ProviderModeNotActive);
     }
 
@@ -153,6 +158,7 @@ pub fn exit_provider_mode(codex_home: &Path, state_dir: &Path) -> Result<(), App
             state_path(state_dir).display()
         ))
     })?;
+    codex_desktop::reopen_if_needed(&desktop_session)?;
     Ok(())
 }
 

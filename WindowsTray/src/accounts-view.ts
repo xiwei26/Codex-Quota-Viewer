@@ -39,6 +39,7 @@ export function renderAccounts(
         <button id="importChatGpt">${escapeHtml(presentation.labels.signInWithChatgpt)}</button>
         <button id="showApiForm">${escapeHtml(presentation.labels.addApiAccount)}</button>
         <button id="rollbackLastChange">${escapeHtml(presentation.labels.rollbackLastChange)}</button>
+        <button id="repairNow">${escapeHtml(presentation.labels.repairNow)}</button>
         <button id="openVaultFolder">${escapeHtml(presentation.labels.openVaultFolder)}</button>
       </div>
       <form id="apiAccountForm" class="api-form" hidden>
@@ -72,6 +73,9 @@ function bindAccountControls(onUpdated: (next: AccountsPresentation) => void): v
     if (confirm("Rollback the latest safe switch restore point?")) {
       onUpdated(await invoke<AccountsPresentation>("rollback_last_change"));
     }
+  });
+  document.querySelector("#repairNow")?.addEventListener("click", async () => {
+    onUpdated(await invoke<AccountsPresentation>("repair_now"));
   });
   document.querySelector("#apiAccountForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();

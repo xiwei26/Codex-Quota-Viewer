@@ -21,6 +21,8 @@ pub enum AppError {
     ProviderModeNotActive,
     RestorePointFailed(String),
     RestorePointUnavailable,
+    RepairFailed(String),
+    CodexDesktopControlFailed(String),
 }
 
 impl AppError {
@@ -45,6 +47,8 @@ impl AppError {
             Self::ProviderModeNotActive => "Third-party Provider mode is not active",
             Self::RestorePointFailed(_) => "Restore point operation failed",
             Self::RestorePointUnavailable => "No restore point is available",
+            Self::RepairFailed(_) => "Repair failed",
+            Self::CodexDesktopControlFailed(_) => "Codex desktop control failed",
         }
     }
 
@@ -60,7 +64,9 @@ impl AppError {
             | Self::AccountNotFound(message)
             | Self::AccountActivationFailed(message)
             | Self::ProviderModeFailed(message)
-            | Self::RestorePointFailed(message) => Some(message),
+            | Self::RestorePointFailed(message)
+            | Self::RepairFailed(message)
+            | Self::CodexDesktopControlFailed(message) => Some(message),
             _ => None,
         }
     }

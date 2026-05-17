@@ -10,6 +10,7 @@ mod account_commands;
 mod account_models;
 mod account_vault;
 mod app_state;
+mod codex_desktop;
 mod codex_home;
 mod errors;
 mod launch_at_login;
@@ -34,8 +35,8 @@ use settings::{
     load_settings, save_settings, settings_presentation, AppSettings, SettingsPresentation,
 };
 use tray::{
-    MENU_OPEN_CODEX_FOLDER, MENU_OPEN_SESSION_MANAGER, MENU_QUIT, MENU_REFRESH, MENU_ROLLBACK,
-    MENU_SETTINGS,
+    MENU_OPEN_CODEX_FOLDER, MENU_OPEN_SESSION_MANAGER, MENU_QUIT, MENU_REFRESH, MENU_REPAIR,
+    MENU_ROLLBACK, MENU_SETTINGS,
 };
 
 #[tauri::command]
@@ -114,6 +115,7 @@ fn main() {
             account_commands::enter_provider_mode,
             account_commands::exit_provider_mode,
             account_commands::rollback_last_change,
+            account_commands::repair_now,
             account_commands::rename_account,
             account_commands::forget_account,
             account_commands::open_vault_folder
@@ -189,6 +191,7 @@ pub(crate) fn handle_menu_event(app: &AppHandle, menu_id: &str) {
     match menu_id {
         MENU_REFRESH => spawn_refresh(app.clone(), state),
         MENU_ROLLBACK => spawn_rollback_last_change(app.clone(), state),
+        MENU_REPAIR => spawn_repair_now(app.clone(), state),
         MENU_SETTINGS => show_settings_window(app),
         MENU_OPEN_SESSION_MANAGER => spawn_open_session_manager(app.clone(), state),
         MENU_OPEN_CODEX_FOLDER => {
@@ -202,6 +205,26 @@ pub(crate) fn handle_menu_event(app: &AppHandle, menu_id: &str) {
             }
         }
     }
+}
+
+fn spawn_repair_now(app: AppHandle, state: SharedAppState) {
+    tauri::async_runtime::spawn(async move {
+        let result = {
+            let mut manager = state.session_manager.lock().await;
+            manager.rescan_and_repair().await
+        };
+        let mut snapshot = state.tray_snapshot.lock().await;
+        match result {
+            Ok(_) => {
+                snapshot.last_error = None;
+            }
+            Err(error) => {
+                snapshot.last_error = Some(error);
+            }
+        }
+        drop(snapshot);
+        update_tray_from_state(&app, &state).await;
+    });
 }
 
 fn spawn_rollback_last_change(app: AppHandle, state: SharedAppState) {
