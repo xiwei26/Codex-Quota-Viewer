@@ -11,6 +11,7 @@ use crate::provider_mode::{
     exit_provider_mode as exit_provider_mode_files, load_provider_mode_state, ProviderModeState,
 };
 use crate::restore_points::RestorePointManager;
+use crate::session_manager::OfficialRepairSummary;
 use crate::settings::ResolvedAppLanguage;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -236,17 +237,18 @@ pub async fn activate_account(
         &app_state.switch_backups_dir,
     )
     .map_err(|error| app_error_message(language, &error))?;
+    let repair_summary = repair_local_threads(&app_state)
+        .await
+        .map_err(|error| app_error_message(language, &error))?;
     super::spawn_refresh(app, app_state.clone());
     build_accounts_presentation_with_provider_mode(
         &vault,
         &app_state.provider_mode_dir,
         language,
-        Some(localize(
+        Some(switch_success_message(
             language,
-            LocalizedText::new(
-                "Account activated",
-                "\u{8d26}\u{53f7}\u{5df2}\u{5b89}\u{5168}\u{6fc0}\u{6d3b}",
-            ),
+            "Account activated",
+            &repair_summary,
         )),
     )
     .map_err(|error| app_error_message(language, &error))
@@ -286,13 +288,9 @@ pub async fn repair_now(
     let app_state = state.inner().clone();
     let language = super::current_resolved_language(&app_state).await;
     let vault = AccountVault::new(app_state.accounts_dir.clone());
-    let summary = {
-        let mut manager = app_state.session_manager.lock().await;
-        manager
-            .rescan_and_repair()
-            .await
-            .map_err(|error| app_error_message(language, &error))?
-    };
+    let summary = repair_local_threads(&app_state)
+        .await
+        .map_err(|error| app_error_message(language, &error))?;
     build_accounts_presentation_with_provider_mode(
         &vault,
         &app_state.provider_mode_dir,
@@ -329,17 +327,18 @@ pub async fn enter_provider_mode(
         .map_err(|error| app_error_message(language, &error))?;
     enter_provider_mode_files(&record, &app_state.codex_home, &app_state.provider_mode_dir)
         .map_err(|error| app_error_message(language, &error))?;
+    let repair_summary = repair_local_threads(&app_state)
+        .await
+        .map_err(|error| app_error_message(language, &error))?;
     super::spawn_refresh(app, app_state.clone());
     build_accounts_presentation_with_provider_mode(
         &vault,
         &app_state.provider_mode_dir,
         language,
-        Some(localize(
+        Some(switch_success_message(
             language,
-            LocalizedText::new(
-                "Third-party Provider enabled",
-                "\u{7b2c}\u{4e09}\u{65b9} Provider \u{5df2}\u{5f00}\u{542f}",
-            ),
+            "Third-party Provider enabled",
+            &repair_summary,
         )),
     )
     .map_err(|error| app_error_message(language, &error))
@@ -364,17 +363,18 @@ pub async fn exit_provider_mode(
     let vault = AccountVault::new(app_state.accounts_dir.clone());
     exit_provider_mode_files(&app_state.codex_home, &app_state.provider_mode_dir)
         .map_err(|error| app_error_message(language, &error))?;
+    let repair_summary = repair_local_threads(&app_state)
+        .await
+        .map_err(|error| app_error_message(language, &error))?;
     super::spawn_refresh(app, app_state.clone());
     build_accounts_presentation_with_provider_mode(
         &vault,
         &app_state.provider_mode_dir,
         language,
-        Some(localize(
+        Some(switch_success_message(
             language,
-            LocalizedText::new(
-                "Restored normal ChatGPT mode",
-                "\u{5df2}\u{6062}\u{590d}\u{666e}\u{901a} ChatGPT \u{6a21}\u{5f0f}",
-            ),
+            "Restored normal ChatGPT mode",
+            &repair_summary,
         )),
     )
     .map_err(|error| app_error_message(language, &error))
@@ -456,6 +456,9 @@ pub fn spawn_activate_account_from_tray(
                 .map_err(|error| app_error_message(language, &error))?;
             safely_activate_account_record(&record, &state.codex_home, &state.switch_backups_dir)
                 .map_err(|error| app_error_message(language, &error))?;
+            repair_local_threads(&state)
+                .await
+                .map_err(|error| app_error_message(language, &error))?;
             Ok::<(), String>(())
         }
         .await;
@@ -469,6 +472,28 @@ pub fn spawn_activate_account_from_tray(
             super::spawn_refresh(app.clone(), state.clone());
         }
     });
+}
+
+async fn repair_local_threads(state: &SharedAppState) -> Result<OfficialRepairSummary, AppError> {
+    let mut manager = state.session_manager.lock().await;
+    manager.rescan_and_repair().await
+}
+
+fn switch_success_message(
+    language: ResolvedAppLanguage,
+    english_prefix: &'static str,
+    repair_summary: &OfficialRepairSummary,
+) -> String {
+    let prefix = localize(
+        language,
+        LocalizedText::new(english_prefix, "\u{64cd}\u{4f5c}\u{5df2}\u{5b8c}\u{6210}"),
+    );
+    format!(
+        "{prefix}. Repair: +{} ~{} index {}",
+        repair_summary.created_threads,
+        repair_summary.updated_threads,
+        repair_summary.updated_session_index_entries
+    )
 }
 
 #[cfg(test)]
