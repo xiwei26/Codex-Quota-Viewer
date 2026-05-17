@@ -68,6 +68,10 @@ export class CodexOfficialThreadBridge {
     };
   }
 
+  providerCounts() {
+    return this.threads.providerCounts();
+  }
+
   async repairSessions(
     records: SessionRecord[],
     options: {

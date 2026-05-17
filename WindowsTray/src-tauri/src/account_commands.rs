@@ -11,6 +11,9 @@ use crate::provider_mode::{
     exit_provider_mode as exit_provider_mode_files, load_provider_mode_state, ProviderModeState,
 };
 use crate::restore_points::RestorePointManager;
+use crate::rollout_sync::{
+    provider_counts as rollout_provider_counts, target_provider_for_config, ProviderCount,
+};
 use crate::session_manager::OfficialRepairSummary;
 use crate::settings::ResolvedAppLanguage;
 
@@ -50,6 +53,17 @@ pub struct AccountsPresentation {
     pub rows: Vec<AccountRow>,
     pub provider_mode: Option<ProviderModeState>,
     pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalProviderSyncPresentation {
+    pub title: String,
+    pub status: String,
+    pub expected_provider: Option<String>,
+    pub rollout_providers: Vec<ProviderCount>,
+    pub thread_providers: Vec<ProviderCount>,
+    pub thread_issue: Option<String>,
 }
 
 pub fn build_accounts_presentation(
@@ -315,6 +329,59 @@ pub async fn repair_now(
 }
 
 #[tauri::command]
+pub async fn inspect_local_provider_sync(
+    state: tauri::State<'_, SharedAppState>,
+) -> Result<LocalProviderSyncPresentation, String> {
+    let app_state = state.inner().clone();
+    let language = super::current_resolved_language(&app_state).await;
+    let rollout_providers = rollout_provider_counts(&app_state.codex_home)
+        .map_err(|error| app_error_message(language, &error))?;
+    let expected_provider = expected_provider_from_current_config(&app_state.codex_home)
+        .or_else(|| most_common_provider(&rollout_providers));
+
+    let thread_result = {
+        let mut manager = app_state.session_manager.lock().await;
+        manager.provider_counts().await
+    };
+    let (thread_providers, thread_issue) = match thread_result {
+        Ok(counts) => (
+            counts
+                .into_iter()
+                .map(|count| ProviderCount {
+                    provider_id: count.provider_id,
+                    count: count.count,
+                })
+                .collect(),
+            None,
+        ),
+        Err(error) => (Vec::new(), Some(app_error_message(language, &error))),
+    };
+
+    let status = provider_sync_status(
+        language,
+        expected_provider.as_deref(),
+        &rollout_providers,
+        &thread_providers,
+        thread_issue.as_deref(),
+    );
+
+    Ok(LocalProviderSyncPresentation {
+        title: localize(
+            language,
+            LocalizedText::new(
+                "Local Provider Sync",
+                "\u{672c}\u{5730} Provider \u{540c}\u{6b65}",
+            ),
+        ),
+        status,
+        expected_provider,
+        rollout_providers,
+        thread_providers,
+        thread_issue,
+    })
+}
+
+#[tauri::command]
 pub async fn enter_provider_mode(
     app: tauri::AppHandle,
     state: tauri::State<'_, SharedAppState>,
@@ -510,6 +577,68 @@ fn switch_success_message(
         repair_summary.created_threads,
         repair_summary.updated_threads,
         repair_summary.updated_session_index_entries
+    )
+}
+
+fn expected_provider_from_current_config(codex_home: &std::path::Path) -> Option<String> {
+    std::fs::read_to_string(codex_home.join("config.toml"))
+        .ok()
+        .and_then(|config| target_provider_for_config(&config))
+}
+
+fn most_common_provider(counts: &[ProviderCount]) -> Option<String> {
+    counts.first().map(|count| count.provider_id.clone())
+}
+
+fn provider_sync_status(
+    language: ResolvedAppLanguage,
+    expected_provider: Option<&str>,
+    rollout_providers: &[ProviderCount],
+    thread_providers: &[ProviderCount],
+    thread_issue: Option<&str>,
+) -> String {
+    let Some(expected) = expected_provider else {
+        return localize(
+            language,
+            LocalizedText::new(
+                "No local provider metadata found.",
+                "\u{672a}\u{627e}\u{5230}\u{672c}\u{5730} Provider \u{5143}\u{6570}\u{636e}\u{3002}",
+            ),
+        );
+    };
+    let rollout_mismatch = rollout_providers
+        .iter()
+        .any(|count| count.provider_id != expected);
+    let thread_mismatch = thread_providers
+        .iter()
+        .any(|count| count.provider_id != expected);
+
+    if rollout_mismatch || thread_mismatch {
+        return localize(
+            language,
+            LocalizedText::new(
+                "Repair recommended: provider metadata does not all match the current config.",
+                "\u{5efa}\u{8bae}\u{4fee}\u{590d}\u{ff1a}Provider \u{5143}\u{6570}\u{636e}\u{4e0e}\u{5f53}\u{524d}\u{914d}\u{7f6e}\u{4e0d}\u{5b8c}\u{5168}\u{4e00}\u{81f4}\u{3002}",
+            ),
+        );
+    }
+
+    if thread_issue.is_some() {
+        return localize(
+            language,
+            LocalizedText::new(
+                "Rollout metadata matches. Official thread counts are unavailable.",
+                "Rollout \u{5143}\u{6570}\u{636e}\u{4e00}\u{81f4}\u{3002}\u{6682}\u{65f6}\u{65e0}\u{6cd5}\u{8bfb}\u{53d6}\u{5b98}\u{65b9} thread \u{8ba1}\u{6570}\u{3002}",
+            ),
+        );
+    }
+
+    localize(
+        language,
+        LocalizedText::new(
+            "Provider metadata is aligned.",
+            "Provider \u{5143}\u{6570}\u{636e}\u{5df2}\u{5bf9}\u{9f50}\u{3002}",
+        ),
     )
 }
 

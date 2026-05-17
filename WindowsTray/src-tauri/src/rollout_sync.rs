@@ -11,6 +11,13 @@ pub struct RolloutProviderSyncResult {
     pub updated_files: Vec<PathBuf>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderCount {
+    pub provider_id: String,
+    pub count: usize,
+}
+
 pub fn rollout_roots(codex_home: &Path) -> [PathBuf; 2] {
     [
         codex_home.join("sessions"),
@@ -32,6 +39,28 @@ pub fn planned_rollout_updates(
     Ok(updates)
 }
 
+pub fn provider_counts(codex_home: &Path) -> Result<Vec<ProviderCount>, AppError> {
+    let mut counts = std::collections::BTreeMap::<String, usize>::new();
+    for file in rollout_files(&rollout_roots(codex_home))? {
+        let Some(provider) = session_meta_provider(&file)? else {
+            continue;
+        };
+        *counts.entry(provider).or_default() += 1;
+    }
+
+    let mut result: Vec<ProviderCount> = counts
+        .into_iter()
+        .map(|(provider_id, count)| ProviderCount { provider_id, count })
+        .collect();
+    result.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| left.provider_id.cmp(&right.provider_id))
+    });
+    Ok(result)
+}
+
 pub fn sync_rollout_providers(
     codex_home: &Path,
     target_provider: &str,
@@ -46,6 +75,33 @@ pub fn sync_rollout_providers(
     }
     updated_files.sort();
     Ok(RolloutProviderSyncResult { updated_files })
+}
+
+fn session_meta_provider(file: &Path) -> Result<Option<String>, AppError> {
+    let content = fs::read_to_string(file)
+        .map_err(|error| rollout_error(format!("read rollout file {}: {error}", file.display())))?;
+    let Some((first_line, _rest)) = split_first_line(&content) else {
+        return Ok(None);
+    };
+    if first_line.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let object: Value = match serde_json::from_str(first_line) {
+        Ok(value) => value,
+        Err(_) => return Ok(None),
+    };
+    if object.get("type").and_then(Value::as_str) != Some("session_meta") {
+        return Ok(None);
+    }
+    Ok(object
+        .get("payload")
+        .and_then(Value::as_object)
+        .and_then(|payload| payload.get("model_provider"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string))
 }
 
 pub fn target_provider_for_config(config: &str) -> Option<String> {
@@ -224,5 +280,43 @@ mod tests {
             Some("OpenAI")
         );
         assert_eq!(target_provider_for_config("model_provider = \"\"\n"), None);
+    }
+
+    #[test]
+    fn counts_rollout_providers() {
+        let temp = tempfile::tempdir().unwrap();
+        let session_dir = temp.path().join("sessions");
+        fs::create_dir_all(&session_dir).unwrap();
+        fs::write(
+            session_dir.join("one.jsonl"),
+            "{\"type\":\"session_meta\",\"payload\":{\"model_provider\":\"openai\"}}\n",
+        )
+        .unwrap();
+        fs::write(
+            session_dir.join("two.jsonl"),
+            "{\"type\":\"session_meta\",\"payload\":{\"model_provider\":\"custom\"}}\n",
+        )
+        .unwrap();
+        fs::write(
+            session_dir.join("three.jsonl"),
+            "{\"type\":\"session_meta\",\"payload\":{\"model_provider\":\"openai\"}}\n",
+        )
+        .unwrap();
+
+        let counts = provider_counts(temp.path()).unwrap();
+
+        assert_eq!(
+            counts,
+            vec![
+                ProviderCount {
+                    provider_id: "openai".to_string(),
+                    count: 2,
+                },
+                ProviderCount {
+                    provider_id: "custom".to_string(),
+                    count: 1,
+                },
+            ]
+        );
     }
 }

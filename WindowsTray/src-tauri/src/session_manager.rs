@@ -28,9 +28,21 @@ pub struct OfficialRepairSummary {
     pub hidden_snapshot_only_sessions: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionManagerProviderCount {
+    pub provider_id: String,
+    pub count: usize,
+}
+
 #[derive(Debug, serde::Deserialize)]
 struct RepairEnvelope {
     stats: OfficialRepairSummary,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ProviderCountsEnvelope {
+    thread_providers: Vec<SessionManagerProviderCount>,
 }
 
 impl SessionManager {
@@ -113,6 +125,13 @@ impl SessionManager {
         Ok(envelope.stats)
     }
 
+    pub async fn provider_counts(&mut self) -> Result<Vec<SessionManagerProviderCount>, AppError> {
+        self.ensure_running().await?;
+        let envelope: ProviderCountsEnvelope =
+            get_json("http://127.0.0.1:4318/api/codex/provider-counts").await?;
+        Ok(envelope.thread_providers)
+    }
+
     pub async fn stop_owned_process(&mut self) {
         if let Some(child) = self.owned_child.as_mut() {
             let _ = child.kill().await;
@@ -126,6 +145,23 @@ async fn post_json_empty<T: serde::de::DeserializeOwned>(url: &str) -> Result<T,
         .post(url)
         .json(&serde_json::json!({}))
         .send()
+        .await
+        .map_err(|error| AppError::RepairFailed(error.to_string()))?;
+    let status = response.status();
+    let body = response
+        .bytes()
+        .await
+        .map_err(|error| AppError::RepairFailed(error.to_string()))?;
+    if !status.is_success() {
+        return Err(AppError::RepairFailed(
+            String::from_utf8_lossy(&body).trim().to_string(),
+        ));
+    }
+    serde_json::from_slice(&body).map_err(|error| AppError::RepairFailed(error.to_string()))
+}
+
+async fn get_json<T: serde::de::DeserializeOwned>(url: &str) -> Result<T, AppError> {
+    let response = reqwest::get(url)
         .await
         .map_err(|error| AppError::RepairFailed(error.to_string()))?;
     let status = response.status();

@@ -2,7 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { renderAccounts } from "./accounts-view";
 import { escapeHtml } from "./dom";
 import { renderGeneralSettings } from "./settings-view";
-import type { AccountsPresentation, SettingsPresentation } from "./types";
+import type {
+  AccountsPresentation,
+  LocalProviderSyncPresentation,
+  SettingsPresentation,
+} from "./types";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -12,6 +16,7 @@ if (!app) {
 
 let settingsPresentation: SettingsPresentation | null = null;
 let accountsPresentation: AccountsPresentation | null = null;
+let localProviderSync: LocalProviderSyncPresentation | null = null;
 let activeTab: "general" | "accounts" = "general";
 
 function render(): void {
@@ -25,10 +30,18 @@ function render(): void {
           settingsPresentation = next;
           render();
         })
-      : renderAccounts(accountsPresentation, (next) => {
-          accountsPresentation = next;
-          render();
-        });
+      : renderAccounts(
+          accountsPresentation,
+          (next) => {
+            accountsPresentation = next;
+            render();
+          },
+          localProviderSync,
+          (next) => {
+            localProviderSync = next;
+            render();
+          },
+        );
 
   app.innerHTML = `
     <main class="settings-shell">

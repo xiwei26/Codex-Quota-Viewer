@@ -98,6 +98,23 @@ export class CodexThreadStateRepository {
     return rows.map(mapThreadRow);
   }
 
+  providerCounts() {
+    if (!this.db) {
+      return [] as Array<{ providerId: string; count: number }>;
+    }
+
+    return this.db
+      .prepare(
+        `
+          select coalesce(trim(model_provider), '') as providerId, count(*) as count
+          from threads
+          group by coalesce(trim(model_provider), '')
+          order by count(*) desc, coalesce(trim(model_provider), '') asc
+        `,
+      )
+      .all() as Array<{ providerId: string; count: number }>;
+  }
+
   getThread(threadId: string) {
     if (!this.db) {
       return null;

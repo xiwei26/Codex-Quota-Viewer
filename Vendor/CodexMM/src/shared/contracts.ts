@@ -156,6 +156,15 @@ export type OfficialRepairStats = {
   hiddenSnapshotOnlySessions: number;
 };
 
+export type ProviderCount = {
+  providerId: string;
+  count: number;
+};
+
+export type ProviderCountsResponse = {
+  threadProviders: ProviderCount[];
+};
+
 export type OfficialRepairResponse = {
   sessions: SessionRecord[];
   stats: OfficialRepairStats;

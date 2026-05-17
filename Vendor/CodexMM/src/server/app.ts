@@ -87,6 +87,14 @@ export function createApp(config: AppConfig) {
     }
   });
 
+  app.get("/api/codex/provider-counts", async (_request, response, next) => {
+    try {
+      response.json(await manager.listProviderCounts());
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/api/sessions/batch/archive", async (request, response, next) => {
     try {
       response.json(

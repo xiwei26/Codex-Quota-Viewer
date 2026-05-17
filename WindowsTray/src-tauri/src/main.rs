@@ -117,6 +117,7 @@ fn main() {
             account_commands::exit_provider_mode,
             account_commands::rollback_last_change,
             account_commands::repair_now,
+            account_commands::inspect_local_provider_sync,
             account_commands::rename_account,
             account_commands::forget_account,
             account_commands::open_vault_folder

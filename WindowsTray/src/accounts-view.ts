@@ -1,12 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { escapeHtml } from "./dom";
-import type { AccountsPresentation } from "./types";
+import type { AccountsPresentation, LocalProviderSyncPresentation, ProviderCount } from "./types";
 
 export function renderAccounts(
   presentation: AccountsPresentation,
   onUpdated: (next: AccountsPresentation) => void,
+  providerSync: LocalProviderSyncPresentation | null,
+  onProviderSyncUpdated: (next: LocalProviderSyncPresentation) => void,
 ): string {
-  queueMicrotask(() => bindAccountControls(onUpdated));
+  queueMicrotask(() => bindAccountControls(onUpdated, onProviderSyncUpdated));
   const providerMode = presentation.providerMode;
   const providerModeBanner = providerMode
     ? `<div class="provider-mode-banner">
@@ -51,12 +53,53 @@ export function renderAccounts(
         <button type="submit">${escapeHtml(presentation.labels.addApiAccount)}</button>
       </form>
       <div class="account-list">${rows}</div>
+      ${renderProviderSync(providerSync)}
       <p id="accountsStatus" class="settings-status">${escapeHtml(presentation.message ?? "")}</p>
     </section>
   `;
 }
 
-function bindAccountControls(onUpdated: (next: AccountsPresentation) => void): void {
+function renderProviderSync(sync: LocalProviderSyncPresentation | null): string {
+  const rollout = sync ? renderProviderCounts(sync.rolloutProviders) : "";
+  const threads = sync ? renderProviderCounts(sync.threadProviders) : "";
+  return `
+    <section class="provider-sync-panel">
+      <div class="provider-sync-header">
+        <div>
+          <strong>${escapeHtml(sync?.title ?? "Local Provider Sync")}</strong>
+          <small>${escapeHtml(sync?.expectedProvider ? `Expected: ${sync.expectedProvider}` : "Expected: -")}</small>
+        </div>
+        <button id="inspectProviderSync">Inspect</button>
+      </div>
+      <div class="provider-sync-grid">
+        <div>
+          <span>Rollout</span>
+          ${rollout || "<small>-</small>"}
+        </div>
+        <div>
+          <span>Threads</span>
+          ${threads || "<small>-</small>"}
+        </div>
+      </div>
+      <p class="settings-status">${escapeHtml(sync?.status ?? "Run Inspect to compare local provider metadata.")}</p>
+      ${sync?.threadIssue ? `<p class="settings-status">${escapeHtml(sync.threadIssue)}</p>` : ""}
+    </section>
+  `;
+}
+
+function renderProviderCounts(counts: ProviderCount[]): string {
+  if (!counts.length) {
+    return "<small>-</small>";
+  }
+  return counts
+    .map((count) => `<small>${escapeHtml(count.providerId || "(blank)")}: ${count.count}</small>`)
+    .join("");
+}
+
+function bindAccountControls(
+  onUpdated: (next: AccountsPresentation) => void,
+  onProviderSyncUpdated: (next: LocalProviderSyncPresentation) => void,
+): void {
   document.querySelector("#importChatGpt")?.addEventListener("click", async () => {
     onUpdated(await invoke<AccountsPresentation>("import_current_chatgpt_account", { displayName: null }));
   });
@@ -76,6 +119,9 @@ function bindAccountControls(onUpdated: (next: AccountsPresentation) => void): v
   });
   document.querySelector("#repairNow")?.addEventListener("click", async () => {
     onUpdated(await invoke<AccountsPresentation>("repair_now"));
+  });
+  document.querySelector("#inspectProviderSync")?.addEventListener("click", async () => {
+    onProviderSyncUpdated(await invoke<LocalProviderSyncPresentation>("inspect_local_provider_sync"));
   });
   document.querySelector("#apiAccountForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();

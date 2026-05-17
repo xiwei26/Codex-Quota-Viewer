@@ -116,6 +116,12 @@ export function createSessionManager(config: ManagerConfig) {
     });
   }
 
+  async function listProviderCounts() {
+    return {
+      threadProviders: officialThreads.providerCounts(),
+    };
+  }
+
   async function scanAndIndexSessions() {
     await ensureRoots();
     const [activeEntries, archivedEntries, snapshotEntries] = await Promise.all([
@@ -708,6 +714,7 @@ export function createSessionManager(config: ManagerConfig) {
     batchRestoreSessions,
     batchPurgeSessions,
     repairOfficialThreads,
+    listProviderCounts,
   };
 
   function enqueueMutation<T>(task: () => Promise<T>) {

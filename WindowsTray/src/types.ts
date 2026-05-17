@@ -49,9 +49,24 @@ export type AccountRow = {
 };
 
 export type ProviderModeState = {
+  restorePointId?: string | null;
   providerAccountId: string;
   providerDisplayName: string;
   activatedAt: string;
+};
+
+export type ProviderCount = {
+  providerId: string;
+  count: number;
+};
+
+export type LocalProviderSyncPresentation = {
+  title: string;
+  status: string;
+  expectedProvider: string | null;
+  rolloutProviders: ProviderCount[];
+  threadProviders: ProviderCount[];
+  threadIssue: string | null;
 };
 
 export type AccountsPresentation = {

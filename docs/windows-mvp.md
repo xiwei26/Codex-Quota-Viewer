@@ -26,6 +26,9 @@ The Windows MVP is a Tauri-based system tray app for Codex Quota Viewer.
   Session Manager after Safe Switch and Provider-mode changes.
 - Synchronizes historical session JSONL rollout provider metadata during Safe
   Switch and Provider-mode entry, with rollback coverage.
+- Shows a local Provider sync inspector on the Accounts page. It compares the
+  current expected provider with rollout JSONL counts and official Codex thread
+  counts.
 - Uses a saved API account as a third-party Provider while keeping the current
   ChatGPT login active.
 - Restores the previous `auth.json` and `config.toml` when leaving
@@ -61,6 +64,12 @@ target account uses a different provider, matching the macOS Safe Switch
 behavior. Use **Repair Now** from the Accounts page or tray menu when you want
 to run the same repair flow manually.
 
+Use **Local Provider Sync -> Inspect** on the Accounts page to compare:
+
+- the current expected `model_provider` from `config.toml`
+- rollout provider counts from session JSONL metadata
+- official Codex `threads` provider counts from the bundled Session Manager
+
 ## Third-party Provider Mode
 
 Windows can now mirror the macOS 1.2.0 Provider-mode workflow at the account
@@ -79,8 +88,8 @@ still be exited through the legacy `.bak` restore path.
 
 ## Not Included In The MVP
 
-- Windows does not yet expose the macOS local thread sync inspector UI that
-  summarizes provider counts before a switch.
+- Windows does not yet show the macOS pre-switch confirmation dialog with the
+  provider count preview before each activation.
 
 ## Build
 
