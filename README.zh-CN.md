@@ -3,7 +3,7 @@
 # Codex Quota Viewer
 
 > 当前 macOS 正式版：`1.2.0`
-> Windows 托盘版：`0.0.9`
+> Windows 托盘版：`0.1.0`
 >
 > 1.2.0 更新：
 > - 新增 **第三方 Provider 模式**：Codex 保持普通 ChatGPT 账号登录，但实际请求使用已保存的 API 账号。
@@ -255,8 +255,8 @@ scripts\build-windows-tray.ps1
 构建脚本会暂存内置的 Session Manager 和 Node 运行时，然后生成两种安装包：
 
 ```text
-WindowsTray/src-tauri/target/release/bundle/nsis/Codex Quota Viewer_0.0.9_x64-setup.exe
-WindowsTray/src-tauri/target/release/bundle/msi/Codex Quota Viewer_0.0.9_x64_en-US.msi
+WindowsTray/src-tauri/target/release/bundle/nsis/Codex Quota Viewer_0.1.0_x64-setup.exe
+WindowsTray/src-tauri/target/release/bundle/msi/Codex Quota Viewer_0.1.0_x64_en-US.msi
 ```
 
 参阅 [docs/windows-mvp.md](docs/windows-mvp.md) 了解 Windows 版本的范围、延后支持的功能以及构建说明。

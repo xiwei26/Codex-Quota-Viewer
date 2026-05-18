@@ -3,7 +3,7 @@ English | [中文](README.zh-CN.md)
 # Codex Quota Viewer
 
 > Stable macOS release: `1.2.0`
-> Windows tray release: `0.0.9`
+> Windows tray release: `0.1.0`
 >
 > 1.2.0 update:
 > - Adds **third-party Provider mode** for ChatGPT logins, so Codex can stay signed in with the normal ChatGPT account while requests use a saved API account.
@@ -289,8 +289,8 @@ The build script stages the bundled Session Manager and Node runtime, then
 produces both installers:
 
 ```text
-WindowsTray/src-tauri/target/release/bundle/nsis/Codex Quota Viewer_0.0.9_x64-setup.exe
-WindowsTray/src-tauri/target/release/bundle/msi/Codex Quota Viewer_0.0.9_x64_en-US.msi
+WindowsTray/src-tauri/target/release/bundle/nsis/Codex Quota Viewer_0.1.0_x64-setup.exe
+WindowsTray/src-tauri/target/release/bundle/msi/Codex Quota Viewer_0.1.0_x64_en-US.msi
 ```
 
 See [docs/windows-mvp.md](docs/windows-mvp.md) for Windows scope, deferred

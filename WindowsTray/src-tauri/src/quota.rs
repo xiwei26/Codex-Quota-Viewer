@@ -291,14 +291,25 @@ fn copy_optional_file(
 }
 
 fn codex_command(home: &Path, codex_home: &Path) -> Result<Child, AppError> {
-    Command::new(resolve_codex_executable())
-        .args(["-s", "read-only", "-a", "untrusted", "app-server"])
-        .current_dir(home)
-        .env("HOME", home)
-        .env("CODEX_HOME", codex_home)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+    let mut command = Command::new(resolve_codex_executable());
+    command.args([
+        "-s",
+        "read-only",
+        "-a",
+        "untrusted",
+        "app-server",
+        "--listen",
+        "stdio://",
+    ]);
+    command.current_dir(home);
+    command.env("HOME", home);
+    command.env("CODEX_HOME", codex_home);
+    command.stdin(Stdio::piped());
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
+    configure_hidden_process_window(&mut command);
+
+    command
         .spawn()
         .map_err(|error| AppError::QuotaRefreshFailed(error.to_string()))
 }
@@ -354,7 +365,12 @@ fn read_quota_from_rpc(
     )?;
     read_rpc_response(line_receiver, "1", deadline)?;
 
-    send_rpc_line(stdin, "2", "account/read", serde_json::json!({}))?;
+    send_rpc_line(
+        stdin,
+        "2",
+        "account/read",
+        serde_json::json!({ "refreshToken": false }),
+    )?;
     let account = read_rpc_response(line_receiver, "2", deadline)?;
 
     if account
@@ -382,7 +398,6 @@ fn send_rpc_line(
     params: serde_json::Value,
 ) -> Result<(), AppError> {
     let body = serde_json::json!({
-        "jsonrpc": "2.0",
         "id": id,
         "method": method,
         "params": params
@@ -394,6 +409,17 @@ fn send_rpc_line(
         .write_all(&line)
         .map_err(|error| AppError::QuotaRefreshFailed(error.to_string()))
 }
+
+#[cfg(windows)]
+fn configure_hidden_process_window(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn configure_hidden_process_window(_command: &mut Command) {}
 
 fn read_rpc_response(
     line_receiver: &mpsc::Receiver<std::io::Result<String>>,

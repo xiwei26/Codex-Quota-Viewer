@@ -87,6 +87,7 @@ impl SessionManager {
         command.stdin(Stdio::null());
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
+        configure_hidden_process_window(&mut command);
 
         let child = command
             .spawn()
@@ -193,6 +194,15 @@ fn tail_diagnostics(text: &str, max_chars: usize) -> String {
     let start = chars.len().saturating_sub(max_chars);
     chars[start..].iter().collect()
 }
+
+#[cfg(windows)]
+fn configure_hidden_process_window(command: &mut tokio::process::Command) {
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn configure_hidden_process_window(_command: &mut tokio::process::Command) {}
 
 #[cfg(test)]
 mod tests {
