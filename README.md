@@ -270,14 +270,14 @@ If you want the project verification suite:
 
 The repository now includes a Tauri-based Windows tray app. It focuses on
 showing the current active Codex account quota, configurable refresh behavior,
-General and Accounts settings, saved ChatGPT/API accounts, direct account
-activation with Safe Switch restore points and rollback, third-party Provider
-mode for ChatGPT logins backed by saved API accounts, opening the bundled
-Session Manager, automatic and manual Repair Now for local official thread
-metadata, rollout provider synchronization for historical session JSONL files
-during Safe Switch and Provider-mode entry, Codex desktop close/reopen guards
-around file-changing switches, a local Provider sync inspector on the Accounts
-page, opening the local Codex folder, and clean quit.
+General and Accounts settings, saved ChatGPT/API accounts with automatic model
+detection, direct account activation with Safe Switch restore points and
+rollback, third-party Provider mode for ChatGPT logins backed by saved API
+accounts, opening the bundled Session Manager, automatic and manual Repair Now
+for local official thread metadata, rollout provider synchronization for
+historical session JSONL files during Safe Switch and Provider-mode entry, Codex
+desktop close/reopen guards around file-changing switches, a local Provider sync
+inspector on the Accounts page, opening the local Codex folder, and clean quit.
 
 Build it on Windows:
 

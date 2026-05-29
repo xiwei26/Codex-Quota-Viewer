@@ -244,7 +244,7 @@ swift build -c release --product CodexQuotaViewer
 
 ### Windows 托盘 MVP 版本
 
-本仓库现在包含一个基于 Tauri 的 Windows 托盘应用。它专注于显示当前活动的 Codex 账号额度、支持配置的刷新频率、General 和 Accounts 设置、保存 ChatGPT/API 账号、直接激活账号、打开内置的 Session Manager、打开本地 Codex 目录，以及干净地退出。
+本仓库现在包含一个基于 Tauri 的 Windows 托盘应用。它专注于显示当前活动的 Codex 账号额度、支持配置的刷新频率、General 和 Accounts 设置、保存 ChatGPT/API 账号（支持 API 自动探测）、直接激活账号（带 Safe Switch 备份与回滚）、ChatGPT 登录的第三方 Provider 模式、打开内置的 Session Manager、自动及手动修复本地官方线程元数据、Safe Switch 或 Provider 模式切换时的历史会话同步、切换时的 Codex 桌面进程关闭/重开保护、Accounts 页面本地 Provider 同步检查器、打开本地 Codex 目录，以及干净地退出。
 
 在 Windows 上构建：
 

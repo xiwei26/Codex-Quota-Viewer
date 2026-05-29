@@ -353,6 +353,7 @@ dependencies = [
  "tauri-build",
  "tempfile",
  "tokio",
+ "url",
  "wiremock",
 ]
 

@@ -8,6 +8,7 @@ use tauri::{AppHandle, Manager};
 mod account_activation;
 mod account_commands;
 mod account_models;
+mod account_probe;
 mod account_vault;
 mod app_state;
 mod codex_desktop;
@@ -120,7 +121,8 @@ fn main() {
             account_commands::inspect_local_provider_sync,
             account_commands::rename_account,
             account_commands::forget_account,
-            account_commands::open_vault_folder
+            account_commands::open_vault_folder,
+            account_probe::probe_api_account
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();

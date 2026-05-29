@@ -109,6 +109,17 @@ select {
   grid-template-columns: 1fr 1fr;
 }
 
+.api-form-probe {
+  grid-column: span 2;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.api-form-probe button {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
 .api-form[hidden] {
   display: none;
 }

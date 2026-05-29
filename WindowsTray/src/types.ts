@@ -90,3 +90,9 @@ export type AccountsPresentation = {
   providerMode: ProviderModeState | null;
   message: string | null;
 };
+
+export type ApiProbeResult = {
+  normalizedBaseUrl: string;
+  modelIds: string[];
+  suggestedDisplayName: string;
+};

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { escapeHtml } from "./dom";
-import type { AccountsPresentation, LocalProviderSyncPresentation, ProviderCount } from "./types";
+import type { AccountsPresentation, ApiProbeResult, LocalProviderSyncPresentation, ProviderCount } from "./types";
 
 export function renderAccounts(
   presentation: AccountsPresentation,
@@ -47,7 +47,10 @@ export function renderAccounts(
       <form id="apiAccountForm" class="api-form" hidden>
         <label>Display name<input id="apiDisplayName" /></label>
         <label>API key<input id="apiKey" /></label>
-        <label>Base URL<input id="apiBaseUrl" /></label>
+        <label>Base URL<input id="apiBaseUrl" placeholder="https://api.openai.com/v1" /></label>
+        <div class="api-form-probe">
+          <button type="button" id="probeApi">Detect</button>
+        </div>
         <label>Model<input id="apiModel" /></label>
         <label>Provider name<input id="apiProviderName" /></label>
         <button type="submit">${escapeHtml(presentation.labels.addApiAccount)}</button>
@@ -122,6 +125,35 @@ function bindAccountControls(
   });
   document.querySelector("#inspectProviderSync")?.addEventListener("click", async () => {
     onProviderSyncUpdated(await invoke<LocalProviderSyncPresentation>("inspect_local_provider_sync"));
+  });
+  document.querySelector("#probeApi")?.addEventListener("click", async () => {
+    const apiKey = document.querySelector<HTMLInputElement>("#apiKey")?.value ?? "";
+    const baseUrl = document.querySelector<HTMLInputElement>("#apiBaseUrl")?.value ?? "";
+    const status = document.querySelector<HTMLParagraphElement>("#accountsStatus");
+    if (status) status.textContent = "Probing...";
+    
+    try {
+      const result = await invoke<ApiProbeResult>("probe_api_account", { apiKey, baseUrl });
+      const displayNameField = document.querySelector<HTMLInputElement>("#apiDisplayName");
+      if (displayNameField && !displayNameField.value) {
+        displayNameField.value = result.suggestedDisplayName;
+      }
+      const baseUrlField = document.querySelector<HTMLInputElement>("#apiBaseUrl");
+      if (baseUrlField) {
+        baseUrlField.value = result.normalizedBaseUrl;
+      }
+      const modelField = document.querySelector<HTMLInputElement>("#apiModel");
+      if (modelField && !modelField.value && result.modelIds.length > 0) {
+        modelField.value = result.modelIds[0];
+      }
+      const providerNameField = document.querySelector<HTMLInputElement>("#apiProviderName");
+      if (providerNameField && !providerNameField.value) {
+        providerNameField.value = result.suggestedDisplayName.toLowerCase();
+      }
+      if (status) status.textContent = "Detected: " + result.modelIds.length + " models found.";
+    } catch (error) {
+      if (status) status.textContent = "Detection failed: " + error;
+    }
   });
   document.querySelector("#apiAccountForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
