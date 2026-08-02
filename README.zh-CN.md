@@ -2,14 +2,13 @@
 
 # Codex Quota Viewer
 
-> 当前 macOS 正式版：`1.2.0`
-> Windows 托盘版：`0.1.0`
+> 当前 macOS 正式版：`1.2.1`
+> Windows 托盘版：`1.2.1`
 >
-> 1.2.0 更新：
-> - 新增 **第三方 Provider 模式**：Codex 保持普通 ChatGPT 账号登录，但实际请求使用已保存的 API 账号。
-> - 菜单新增模式切换入口，会根据当前状态显示 **切换为第三方 Provider…** 或 **切换回正常账号**。
-> - 切换时可从已保存 API 账号中选择 Provider，并安全写入 `config.toml` 所需的 `base_url` 与 API Key。
-> - 进入和退出该模式都会创建 restore point，并同步 rollout provider、修复本地线程状态，确保切换 API 与普通账号登录时不丢会话历史。
+> 1.2.1 更新：
+> - 支持当前 Codex 返回的任意数量用量窗口，同时兼容旧版 primary/secondary 格式。
+> - 按运行时返回的用量窗口标签和重置时间显示，不再假定固定的 `5h` / `1w` 限额。
+> - Windows MSI 与 NSIS 安装包及 macOS 构建元数据均同步至 `1.2.1`。
 
 Codex Quota Viewer 是一个原生 macOS 菜单栏应用。它把 Codex 用户最常做的几件
 事放到一个入口里：看当前额度、管理多个账号、安全切换账号、浏览和修复本地会话。
@@ -255,8 +254,8 @@ scripts\build-windows-tray.ps1
 构建脚本会暂存内置的 Session Manager 和 Node 运行时，然后生成两种安装包：
 
 ```text
-WindowsTray/src-tauri/target/release/bundle/nsis/Codex Quota Viewer_0.1.0_x64-setup.exe
-WindowsTray/src-tauri/target/release/bundle/msi/Codex Quota Viewer_0.1.0_x64_en-US.msi
+WindowsTray/src-tauri/target/release/bundle/nsis/Codex Quota Viewer_1.2.1_x64-setup.exe
+WindowsTray/src-tauri/target/release/bundle/msi/Codex Quota Viewer_1.2.1_x64_en-US.msi
 ```
 
 参阅 [docs/windows-mvp.md](docs/windows-mvp.md) 了解 Windows 版本的范围、延后支持的功能以及构建说明。
