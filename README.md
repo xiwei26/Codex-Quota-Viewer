@@ -2,14 +2,13 @@ English | [中文](README.zh-CN.md)
 
 # Codex Quota Viewer
 
-> Stable macOS release: `1.2.0`
-> Windows tray release: `0.1.0`
+> Stable macOS release: `1.2.1`
+> Windows tray release: `1.2.1`
 >
-> 1.2.0 update:
-> - Adds **third-party Provider mode** for ChatGPT logins, so Codex can stay signed in with the normal ChatGPT account while requests use a saved API account.
-> - Adds a menu action that changes between **Switch to Third-party Provider...** and **Switch Back to Normal Account** based on the current mode.
-> - Lets you choose the third-party Provider from saved API accounts, then writes the required `base_url` and API key into `config.toml` safely.
-> - Protects Provider-mode entry and exit with restore points, rollout provider synchronization, local thread repair, and rollback-safe session history handling.
+> 1.2.1 update:
+> - Supports current Codex usage responses with any number of windows while retaining compatibility with the older primary/secondary format.
+> - Uses the runtime-provided usage-window labels and reset times instead of assuming fixed `5h` and `1w` limits.
+> - Includes `1.2.1` Windows MSI and NSIS installers alongside the matching macOS build metadata.
 
 Codex Quota Viewer is a native macOS menu bar app for people who use Codex and
 want everything in one place: current quota, saved accounts, safe account
@@ -22,7 +21,7 @@ CodexMM checkout or a manual Node setup.
 
 ## What 1.0.0 Gives You
 
-- Check the current Codex account and see remaining `5h` and `1w` quota at a
+- Check the current Codex account and see every usage window it reports at a
   glance.
 - Save multiple ChatGPT and API accounts in a local vault owned by the app.
 - Add ChatGPT accounts with the bundled sign-in flow.
@@ -75,8 +74,9 @@ This app is for you if any of these sound familiar:
 The menu bar stays focused on the thing you usually want first: "How much quota
 do I have left right now?"
 
-- Standard Codex logins show `5h` and `1w` windows.
-- Weekly-only plans are shown correctly as weekly-only.
+- Usage windows are read from the installed Codex runtime and displayed using
+  their reported labels and reset times.
+- Single-window plans and plans with additional windows are shown correctly.
 - You can switch the menu bar between a compact meter and a text summary.
 - You can refresh manually or let the app refresh on a schedule.
 - Stale data is marked, so you can tell when the numbers may be out of date.
@@ -289,8 +289,8 @@ The build script stages the bundled Session Manager and Node runtime, then
 produces both installers:
 
 ```text
-WindowsTray/src-tauri/target/release/bundle/nsis/Codex Quota Viewer_0.1.0_x64-setup.exe
-WindowsTray/src-tauri/target/release/bundle/msi/Codex Quota Viewer_0.1.0_x64_en-US.msi
+WindowsTray/src-tauri/target/release/bundle/nsis/Codex Quota Viewer_1.2.1_x64-setup.exe
+WindowsTray/src-tauri/target/release/bundle/msi/Codex Quota Viewer_1.2.1_x64_en-US.msi
 ```
 
 See [docs/windows-mvp.md](docs/windows-mvp.md) for Windows scope, deferred

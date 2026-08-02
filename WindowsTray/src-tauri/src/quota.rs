@@ -98,8 +98,27 @@ fn parse_flat_windows(windows_node: &[serde_json::Value]) -> Vec<QuotaWindow> {
     windows_node
         .iter()
         .filter_map(|window| {
-            let label = window.get("label")?.as_str()?.to_string();
-            let remaining_percent = window.get("remainingPercent")?.as_f64()?;
+            let remaining_percent = window
+                .get("remainingPercent")
+                .and_then(|value| value.as_f64())
+                .or_else(|| {
+                    window
+                        .get("usedPercent")
+                        .and_then(|value| value.as_f64())
+                        .map(|used_percent| 100.0 - used_percent)
+                })?
+                .clamp(0.0, 100.0);
+            let label = window
+                .get("label")
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    quota_window_label(
+                        window
+                            .get("windowDurationMins")
+                            .and_then(|value| value.as_i64()),
+                    )
+                });
             Some(QuotaWindow {
                 label,
                 remaining_percent,
@@ -520,6 +539,40 @@ mod tests {
         assert_eq!(snapshot.windows[0].remaining_percent, 42.5);
         assert_eq!(snapshot.windows[1].label, "1w");
         assert_eq!(snapshot.windows[1].remaining_percent, 88.0);
+    }
+
+    #[test]
+    fn parses_every_flat_window_without_assuming_five_hours_or_a_week() {
+        let snapshot = parse_snapshot_from_rpc_values(
+            json!({
+                "account": {
+                    "email": "ada@example.com",
+                    "type": "chatgpt"
+                }
+            }),
+            json!({
+                "rateLimits": {
+                    "windows": [
+                        { "label": "monthly", "remainingPercent": 91.0 },
+                        { "windowDurationMins": 1440, "usedPercent": 35.0 },
+                        { "label": "burst", "remainingPercent": 64.0 }
+                    ]
+                }
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(snapshot.windows.len(), 3);
+        assert_eq!(snapshot.windows[1].label, "1d");
+        assert_eq!(snapshot.windows[1].remaining_percent, 65.0);
+        assert!(snapshot
+            .windows
+            .iter()
+            .any(|window| window.label == "burst"));
+        assert!(snapshot
+            .windows
+            .iter()
+            .any(|window| window.label == "monthly"));
     }
 
     #[test]

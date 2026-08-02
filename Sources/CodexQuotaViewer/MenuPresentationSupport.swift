@@ -235,6 +235,7 @@ func buildQuotaOverviewRowPresentation(
     let summary = joinedNonEmptyParts([
         quotaTexts.primaryRemainingText,
         quotaTexts.secondaryRemainingText,
+        quotaTexts.additionalSummaryText,
         quotaTexts.primaryResetText,
         quotaTexts.secondaryResetText,
     ])

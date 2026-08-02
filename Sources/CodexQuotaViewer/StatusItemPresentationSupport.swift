@@ -3,7 +3,7 @@ import Foundation
 
 enum StatusItemVisualContent: Equatable {
     case brand
-    case meter(primaryRemaining: Double, secondaryRemaining: Double, state: MeterIconState)
+    case meter(primaryRemaining: Double, secondaryRemaining: Double?, state: MeterIconState)
 }
 
 struct StatusItemPresentation: Equatable {
@@ -46,8 +46,6 @@ func buildStatusItemPresentation(
             visualContent = .brand
         } else {
             let windows = quotaDisplayWindows(from: snapshot)
-            let primaryRemaining = windows.first?.window.remainingPercent ?? 0
-            let secondaryRemaining = windows.dropFirst().first?.window.remainingPercent ?? 0
             let state: MeterIconState
             if currentError != nil {
                 state = .degraded
@@ -57,11 +55,15 @@ func buildStatusItemPresentation(
                 state = .normal
             }
 
-            visualContent = .meter(
-                primaryRemaining: primaryRemaining / 100,
-                secondaryRemaining: secondaryRemaining / 100,
-                state: state
-            )
+            if let primaryWindow = windows.first {
+                visualContent = .meter(
+                    primaryRemaining: primaryWindow.window.remainingPercent / 100,
+                    secondaryRemaining: windows.dropFirst().first.map { $0.window.remainingPercent / 100 },
+                    state: state
+                )
+            } else {
+                visualContent = .brand
+            }
         }
     }
 
