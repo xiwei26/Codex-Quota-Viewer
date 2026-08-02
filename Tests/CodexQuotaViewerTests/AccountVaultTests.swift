@@ -460,3 +460,48 @@ func accountOnboardingCoordinatorUsesCodexExecutableFromPATHWhenBundledExecutabl
     let result = try await coordinator.addChatGPTAccount()
     #expect(result.record.metadata.authMode == .chatgpt)
 }
+
+@Test
+func codexCLIConfigurationPrefersChatGPTAppAndKeepsLegacyFallback() throws {
+    let harness = try makeHarness()
+    let chatGPTCLI = harness.homeURL
+        .appendingPathComponent("ChatGPT.app/Contents/Resources/codex", isDirectory: false)
+    let legacyCLI = harness.homeURL
+        .appendingPathComponent("Codex.app/Contents/Resources/codex", isDirectory: false)
+    try FileManager.default.createDirectory(
+        at: chatGPTCLI.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+        at: legacyCLI.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: chatGPTCLI, options: .atomic)
+    try Data("#!/bin/sh\nexit 0\n".utf8).write(to: legacyCLI, options: .atomic)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: chatGPTCLI.path)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: legacyCLI.path)
+
+    let configuration = resolveCodexCLIConfiguration(
+        bundledExecutableURLs: [chatGPTCLI, legacyCLI],
+        fileManager: .default,
+        environment: [:]
+    )
+
+    #expect(configuration?.executableURL == chatGPTCLI)
+}
+
+@Test
+func codexDesktopAppResolverPrefersChatGPTAppAndKeepsLegacyFallback() throws {
+    let harness = try makeHarness()
+    let chatGPTApp = harness.homeURL.appendingPathComponent("ChatGPT.app", isDirectory: true)
+    let legacyApp = harness.homeURL.appendingPathComponent("Codex.app", isDirectory: true)
+    try FileManager.default.createDirectory(at: chatGPTApp, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: legacyApp, withIntermediateDirectories: true)
+
+    let resolved = resolveCodexDesktopAppURL(
+        appURLs: [chatGPTApp, legacyApp],
+        fileManager: .default
+    )
+
+    #expect(resolved == chatGPTApp)
+}

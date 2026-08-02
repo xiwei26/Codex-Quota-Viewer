@@ -227,8 +227,8 @@ The screenshots in this repository are privacy-safe examples.
 For the macOS menu bar app:
 
 - macOS 13 or later
-- A local Codex installation:
-  `Codex.app` in `/Applications`, or a `codex` executable available in `PATH`
+- A local ChatGPT/Codex installation:
+  `ChatGPT.app` (or legacy `Codex.app`) in `/Applications`, or a `codex` executable available in `PATH`
 - A signed-in Codex profile in `~/.codex/auth.json`
 
 For the Windows tray MVP:
@@ -298,10 +298,10 @@ features, and build notes.
 
 ## Troubleshooting
 
-### "Could not find the codex executable."
+### "Could not find the Codex CLI in ChatGPT.app, Codex.app, or PATH."
 
-Make sure either `Codex.app` exists in `/Applications` or `codex` is available
-in your shell `PATH`.
+Make sure `ChatGPT.app` (or legacy `Codex.app`) exists in `/Applications`, or
+that `codex` is available in your shell `PATH`.
 
 ### "Sign in required."
 

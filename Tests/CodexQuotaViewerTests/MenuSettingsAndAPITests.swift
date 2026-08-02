@@ -429,7 +429,7 @@ func maintenanceMenuRefreshItemShowsProgressCountsWhenAvailable() {
 
 @MainActor
 @Test
-func quotaOverviewMenuRowsPadWeeklyOnlyAccountsWithFiveHourPlaceholder() throws {
+func quotaOverviewMenuRowsUseOnlyReturnedWeeklyWindow() throws {
     try withExclusiveAppLocalization {
         AppLocalization.setPreferredLanguage(.en, preferredLanguages: ["en-US"])
         let now = Date(timeIntervalSince1970: 1_800_000_200)
@@ -466,7 +466,6 @@ func quotaOverviewMenuRowsPadWeeklyOnlyAccountsWithFiveHourPlaceholder() throws 
         dateFormatter.locale = AppLocalization.locale
         dateFormatter.setLocalizedDateFormatFromTemplate("MMM d")
 
-        #expect(findLabel(in: rowView) { $0 == "5h -" } != nil)
         #expect(findLabel(in: rowView) { $0 == "1w 63%" } != nil)
         #expect(findLabel(in: rowView) { $0 == "1w \(dateFormatter.string(from: Date(timeIntervalSince1970: 1_800_086_400)))" } != nil)
     }

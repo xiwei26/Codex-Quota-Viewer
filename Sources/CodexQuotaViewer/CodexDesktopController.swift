@@ -9,13 +9,13 @@ enum CodexDesktopControlError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .appMissing:
-            return AppLocalization.localized(en: "Codex.app was not found in /Applications.", zh: "在 /Applications 中找不到 Codex.app。")
+            return AppLocalization.localized(en: "ChatGPT.app or Codex.app was not found in /Applications.", zh: "在 /Applications 中找不到 ChatGPT.app 或 Codex.app。")
         case .openFailed:
-            return AppLocalization.localized(en: "Codex.app could not be reopened.", zh: "Codex.app 无法重新打开。")
+            return AppLocalization.localized(en: "The ChatGPT/Codex desktop app could not be reopened.", zh: "ChatGPT/Codex 桌面应用无法重新打开。")
         case .closeTimedOut:
             return AppLocalization.localized(
-                en: "Codex.app did not close in time. Safe switch was aborted.",
-                zh: "Codex.app 未能及时关闭，安全切换已中止。"
+                en: "The ChatGPT/Codex desktop app did not close in time. Safe switch was aborted.",
+                zh: "ChatGPT/Codex 桌面应用未能及时关闭，安全切换已中止。"
             )
         }
     }
@@ -31,7 +31,16 @@ protocol CodexDesktopControlling: AnyObject {
 @MainActor
 final class CodexDesktopController: CodexDesktopControlling {
     private let bundleIdentifier = "com.openai.codex"
-    private let codexAppURL = URL(fileURLWithPath: "/Applications/Codex.app", isDirectory: true)
+    private let appURLs: [URL]
+    private let fileManager: FileManager
+
+    init(
+        appURLs: [URL] = CodexDesktopInstallation.appURLs,
+        fileManager: FileManager = .default
+    ) {
+        self.appURLs = appURLs
+        self.fileManager = fileManager
+    }
 
     var isRunning: Bool {
         !runningApplications.isEmpty
@@ -83,7 +92,10 @@ final class CodexDesktopController: CodexDesktopControlling {
             return
         }
 
-        guard FileManager.default.fileExists(atPath: codexAppURL.path) else {
+        guard let appURL = resolveCodexDesktopAppURL(
+            appURLs: appURLs,
+            fileManager: fileManager
+        ) else {
             throw CodexDesktopControlError.appMissing
         }
 
@@ -91,7 +103,7 @@ final class CodexDesktopController: CodexDesktopControlling {
         configuration.activates = false
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            NSWorkspace.shared.openApplication(at: codexAppURL, configuration: configuration) { app, error in
+            NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { app, error in
                 if let error {
                     continuation.resume(throwing: error)
                     return

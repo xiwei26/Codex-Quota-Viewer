@@ -202,8 +202,8 @@ Codex Quota Viewer 是一个原生 macOS 菜单栏应用。它把 Codex 用户�
 对于 macOS 菜单栏应用：
 
 - macOS 13 或更高版本
-- 本机可用的 Codex 安装：
-  `Codex.app` 在 `/Applications`，或者 shell `PATH` 中有 `codex`
+- 本机可用的 ChatGPT/Codex 安装：
+  `ChatGPT.app`（或旧版 `Codex.app`）在 `/Applications`，或者 shell `PATH` 中有 `codex`
 - 已登录的 Codex 配置：`~/.codex/auth.json`
 
 对于 Windows 托盘 MVP 版本：
@@ -262,11 +262,11 @@ WindowsTray/src-tauri/target/release/bundle/msi/Codex Quota Viewer_1.2.1_x64_en-
 
 ## 故障排查
 
-### “Could not find the codex executable.”
+### “Could not find the Codex CLI in ChatGPT.app, Codex.app, or PATH.”
 
 确认以下任一条件成立：
 
-- `/Applications` 里存在 `Codex.app`
+- `/Applications` 里存在 `ChatGPT.app`（或旧版 `Codex.app`）
 - shell `PATH` 中可以直接找到 `codex`
 
 ### “Sign in required.”
