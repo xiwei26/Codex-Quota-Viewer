@@ -105,6 +105,7 @@ struct QuotaOverviewRowQuotaTexts: Equatable {
     let secondaryRemainingText: String
     let primaryResetText: String
     let secondaryResetText: String
+    let additionalSummaryText: String
 }
 
 private enum QuotaProfilePriority: Int, Comparable {
@@ -225,26 +226,25 @@ func quotaTileSecondaryText(for profile: ProviderProfile) -> String {
         }
         return quotaDisplayWindows(for: profile)
             .dropFirst()
-            .first
             .map(compactQuotaWindowText)
-            ?? ""
+            .joined(separator: " ")
     }
 }
 
 func quotaOverviewRowQuotaTexts(for profile: ProviderProfile) -> QuotaOverviewRowQuotaTexts {
-    let windowsByLabel = Dictionary(
-        uniqueKeysWithValues: quotaDisplayWindows(for: profile).map { ($0.label, $0.window) }
-    )
-    let primaryLabel = "5h"
-    let secondaryLabel = "1w"
-    let primaryWindow = windowsByLabel[primaryLabel]
-    let secondaryWindow = windowsByLabel[secondaryLabel]
+    let windows = quotaDisplayWindows(for: profile)
+    let primary = windows.first
+    let secondary = windows.dropFirst().first
+    let additionalSummaryText = windows.dropFirst(2)
+        .map(compactQuotaWindowText)
+        .joined(separator: " ")
 
     return QuotaOverviewRowQuotaTexts(
-        primaryRemainingText: quotaOverviewRowRemainingText(label: primaryLabel, window: primaryWindow),
-        secondaryRemainingText: quotaOverviewRowRemainingText(label: secondaryLabel, window: secondaryWindow),
-        primaryResetText: quotaOverviewRowResetText(label: primaryLabel, window: primaryWindow),
-        secondaryResetText: quotaOverviewRowResetText(label: secondaryLabel, window: secondaryWindow)
+        primaryRemainingText: quotaOverviewRowRemainingText(label: primary?.label ?? "", window: primary?.window),
+        secondaryRemainingText: quotaOverviewRowRemainingText(label: secondary?.label ?? "", window: secondary?.window),
+        primaryResetText: quotaOverviewRowResetText(label: primary?.label ?? "", window: primary?.window),
+        secondaryResetText: quotaOverviewRowResetText(label: secondary?.label ?? "", window: secondary?.window),
+        additionalSummaryText: additionalSummaryText
     )
 }
 
@@ -910,6 +910,9 @@ private func compactQuotaWindowText(_ quotaWindow: QuotaDisplayWindow) -> String
 }
 
 private func quotaOverviewRowRemainingText(label: String, window: RateLimitWindow?) -> String {
+    guard !label.isEmpty else {
+        return ""
+    }
     guard let window else {
         return "\(label) -"
     }
@@ -918,6 +921,9 @@ private func quotaOverviewRowRemainingText(label: String, window: RateLimitWindo
 }
 
 private func quotaOverviewRowResetText(label: String, window: RateLimitWindow?) -> String {
+    guard !label.isEmpty else {
+        return ""
+    }
     guard let window,
           let date = window.resetDate else {
         return "\(label) -"

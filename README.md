@@ -22,7 +22,7 @@ CodexMM checkout or a manual Node setup.
 
 ## What 1.0.0 Gives You
 
-- Check the current Codex account and see remaining `5h` and `1w` quota at a
+- Check the current Codex account and see every usage window it reports at a
   glance.
 - Save multiple ChatGPT and API accounts in a local vault owned by the app.
 - Add ChatGPT accounts with the bundled sign-in flow.
@@ -75,8 +75,9 @@ This app is for you if any of these sound familiar:
 The menu bar stays focused on the thing you usually want first: "How much quota
 do I have left right now?"
 
-- Standard Codex logins show `5h` and `1w` windows.
-- Weekly-only plans are shown correctly as weekly-only.
+- Usage windows are read from the installed Codex runtime and displayed using
+  their reported labels and reset times.
+- Single-window plans and plans with additional windows are shown correctly.
 - You can switch the menu bar between a compact meter and a text summary.
 - You can refresh manually or let the app refresh on a schedule.
 - Stale data is marked, so you can tell when the numbers may be out of date.

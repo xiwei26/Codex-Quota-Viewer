@@ -166,12 +166,72 @@ struct RateLimitSnapshot: Codable, Equatable, Sendable {
     let primary: RateLimitWindow?
     let secondary: RateLimitWindow?
     let planType: String?
+    /// Newer Codex runtimes may return an arbitrary list of windows instead of
+    /// the legacy `primary` / `secondary` pair.
+    let windows: [RateLimitWindow]?
+
+    init(
+        limitId: String?,
+        limitName: String?,
+        primary: RateLimitWindow?,
+        secondary: RateLimitWindow?,
+        planType: String?,
+        windows: [RateLimitWindow]? = nil
+    ) {
+        self.limitId = limitId
+        self.limitName = limitName
+        self.primary = primary
+        self.secondary = secondary
+        self.planType = planType
+        self.windows = windows
+    }
 }
 
 struct RateLimitWindow: Codable, Equatable, Sendable {
     let usedPercent: Double
     let windowDurationMins: Int?
     let resetsAt: Int?
+    let label: String?
+
+    init(
+        usedPercent: Double,
+        windowDurationMins: Int?,
+        resetsAt: Int?,
+        label: String? = nil
+    ) {
+        self.usedPercent = usedPercent
+        self.windowDurationMins = windowDurationMins
+        self.resetsAt = resetsAt
+        self.label = label
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case usedPercent
+        case remainingPercent
+        case windowDurationMins
+        case resetsAt
+        case label
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let usedPercent = try container.decodeIfPresent(Double.self, forKey: .usedPercent) {
+            self.usedPercent = usedPercent
+        } else if let remainingPercent = try container.decodeIfPresent(Double.self, forKey: .remainingPercent) {
+            self.usedPercent = 100 - remainingPercent
+        } else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.usedPercent,
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Quota window is missing usedPercent and remainingPercent."
+                )
+            )
+        }
+        windowDurationMins = try container.decodeIfPresent(Int.self, forKey: .windowDurationMins)
+        resetsAt = try container.decodeIfPresent(Int.self, forKey: .resetsAt)
+        label = try container.decodeIfPresent(String.self, forKey: .label)
+    }
 }
 
 struct QuotaDisplayWindow: Equatable {
@@ -214,16 +274,15 @@ func quotaDisplayWindows(from snapshot: CodexSnapshot?) -> [QuotaDisplayWindow] 
 }
 
 func quotaDisplayWindows(from rateLimits: RateLimitSnapshot) -> [QuotaDisplayWindow] {
-    let rawWindows = [
-        (index: 0, window: rateLimits.primary),
-        (index: 1, window: rateLimits.secondary),
-    ]
-    .compactMap { entry -> (index: Int, window: RateLimitWindow)? in
-        guard let window = entry.window else {
-            return nil
-        }
-        return (index: entry.index, window: window)
+    let sourceWindows: [RateLimitWindow]
+    if let windows = rateLimits.windows {
+        sourceWindows = windows
+    } else {
+        sourceWindows = [rateLimits.primary, rateLimits.secondary].compactMap { $0 }
     }
+
+    let rawWindows = sourceWindows.enumerated()
+        .map { (index: $0.offset, window: $0.element) }
     .sorted { lhs, rhs in
         let lhsDuration = lhs.window.windowDurationMins ?? Int.max
         let rhsDuration = rhs.window.windowDurationMins ?? Int.max
@@ -235,7 +294,7 @@ func quotaDisplayWindows(from rateLimits: RateLimitSnapshot) -> [QuotaDisplayWin
 
     return rawWindows.enumerated().map { offset, entry in
         QuotaDisplayWindow(
-            label: quotaWindowLabel(
+            label: entry.window.label ?? quotaWindowLabel(
                 durationMins: entry.window.windowDurationMins,
                 position: offset,
                 total: rawWindows.count
