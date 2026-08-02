@@ -232,6 +232,14 @@ struct RateLimitWindow: Codable, Equatable, Sendable {
         resetsAt = try container.decodeIfPresent(Int.self, forKey: .resetsAt)
         label = try container.decodeIfPresent(String.self, forKey: .label)
     }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(usedPercent, forKey: .usedPercent)
+        try container.encodeIfPresent(windowDurationMins, forKey: .windowDurationMins)
+        try container.encodeIfPresent(resetsAt, forKey: .resetsAt)
+        try container.encodeIfPresent(label, forKey: .label)
+    }
 }
 
 struct QuotaDisplayWindow: Equatable {

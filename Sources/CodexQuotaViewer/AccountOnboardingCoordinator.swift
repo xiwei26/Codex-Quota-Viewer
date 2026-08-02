@@ -34,8 +34,8 @@ enum AccountOnboardingError: LocalizedError {
         switch self {
         case .codexExecutableMissing:
             return AppLocalization.localized(
-                en: "Codex executable was not found in /Applications or PATH.",
-                zh: "在 /Applications 或 PATH 中都找不到 codex 可执行文件。"
+                en: "The Codex CLI was not found in ChatGPT.app, Codex.app, or PATH.",
+                zh: "在 ChatGPT.app、Codex.app 或 PATH 中都找不到 codex 可执行文件。"
             )
         case .loginFailed(let message):
             return message
@@ -67,8 +67,8 @@ final class AccountOnboardingCoordinator {
         vaultStore: VaultAccountStore,
         backupManager: BackupManager? = nil,
         protectedFilesProvider: ProtectedFilesProvider? = nil,
-        codexExecutableURL: URL = URL(fileURLWithPath: "/Applications/Codex.app/Contents/Resources/codex", isDirectory: false),
-        bundledCodexExecutableURL: URL = URL(fileURLWithPath: "/Applications/Codex.app/Contents/Resources/codex", isDirectory: false),
+        codexExecutableURL: URL = CodexDesktopInstallation.chatGPTCLIURL,
+        bundledCodexExecutableURL: URL = CodexDesktopInstallation.legacyCodexCLIURL,
         fileManager: FileManager = .default,
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         apiModelsProbe: APIModelsProbing = URLSessionAPIModelsProbe(),
@@ -98,7 +98,7 @@ final class AccountOnboardingCoordinator {
     ) async throws -> AccountOnboardingResult {
         guard let launchConfiguration = resolveCodexCLIConfiguration(
             preferredExecutableURL: preferredCodexExecutableURL,
-            bundledExecutableURL: bundledCodexExecutableURL,
+            bundledExecutableURLs: [bundledCodexExecutableURL],
             fileManager: fileManager,
             environment: processEnvironment
         ) else {

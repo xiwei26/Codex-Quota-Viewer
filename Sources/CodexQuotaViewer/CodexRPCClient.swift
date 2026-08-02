@@ -11,7 +11,10 @@ enum CodexRPCError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .missingExecutable:
-            return AppLocalization.localized(en: "Could not find the codex executable.", zh: "找不到 codex 可执行文件。")
+            return AppLocalization.localized(
+                en: "Could not find the Codex CLI in ChatGPT.app, Codex.app, or PATH.",
+                zh: "在 ChatGPT.app、Codex.app 或 PATH 中找不到 codex 可执行文件。"
+            )
         case .timeout:
             return AppLocalization.localized(en: "Timed out while reading quota.", zh: "读取额度超时。")
         case .notLoggedIn:
