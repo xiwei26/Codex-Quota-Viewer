@@ -14,6 +14,10 @@ public sealed class SettingsWindow : Window
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunValueName = "Codex Quota Viewer";
+    private readonly record struct RunValueSnapshot(
+        bool Exists,
+        object? Value,
+        RegistryValueKind Kind);
     private readonly CoreHostClient _core;
     private readonly AppWindow _appWindow;
     private readonly Grid _root;
@@ -237,6 +241,7 @@ public sealed class SettingsWindow : Window
         _generalStatus.Text = "Saving…";
         try
         {
+            var previousSettings = (await _core.GetSettingsAsync()).Settings;
             var settings = new AppSettings
             {
                 RefreshIntervalPreset = Value(_refreshInterval),
@@ -244,8 +249,14 @@ public sealed class SettingsWindow : Window
                 StatusItemStyle = Value(_trayStyle),
                 LaunchAtLoginEnabled = _launchAtLogin.IsOn
             };
-            await _core.SaveSettingsAsync(settings);
-            ApplyLaunchAtLogin(settings.LaunchAtLoginEnabled);
+            await SettingsSaveTransaction.ApplyAsync(
+                previousSettings,
+                settings,
+                settings.LaunchAtLoginEnabled,
+                CaptureLaunchAtLogin,
+                ApplyLaunchAtLogin,
+                RestoreLaunchAtLogin,
+                value => _core.SaveSettingsAsync(value));
             _generalStatus.Text = "Saved";
             DashboardChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -438,6 +449,36 @@ public sealed class SettingsWindow : Window
             var executable = Environment.ProcessPath
                 ?? throw new InvalidOperationException("Current executable path is unavailable.");
             key.SetValue(RunValueName, $"\"{executable}\" --background", RegistryValueKind.String);
+        }
+        else
+        {
+            key.DeleteValue(RunValueName, throwOnMissingValue: false);
+        }
+    }
+
+    private static RunValueSnapshot CaptureLaunchAtLogin()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: false);
+        if (key is null || !key.GetValueNames().Contains(RunValueName, StringComparer.OrdinalIgnoreCase))
+        {
+            return new RunValueSnapshot(false, null, RegistryValueKind.String);
+        }
+        return new RunValueSnapshot(
+            true,
+            key.GetValue(RunValueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames),
+            key.GetValueKind(RunValueName));
+    }
+
+    private static void RestoreLaunchAtLogin(RunValueSnapshot snapshot)
+    {
+        using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath, writable: true)
+            ?? throw new InvalidOperationException("Could not open the Windows Run registry key.");
+        if (snapshot.Exists)
+        {
+            key.SetValue(
+                RunValueName,
+                snapshot.Value ?? throw new InvalidOperationException("The previous Run value is unavailable."),
+                snapshot.Kind);
         }
         else
         {

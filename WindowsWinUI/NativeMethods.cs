@@ -146,6 +146,9 @@ internal static class NativeMethods
     internal static extern bool SetForegroundWindow(nint window);
 
     [DllImport("user32.dll")]
+    internal static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool PostMessage(nint window, uint message, nint wParam, nint lParam);
 

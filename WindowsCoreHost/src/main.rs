@@ -38,7 +38,9 @@ mod session_manager;
 mod settings;
 
 use account_activation::safely_activate_account_record_with_rollout;
-use account_models::{AccountKind, AccountPayload, AddApiAccountInput, VaultAccountRecord};
+use account_models::{
+    normalize_api_base_url, AccountKind, AccountPayload, AddApiAccountInput, VaultAccountRecord,
+};
 use account_vault::AccountVault;
 use errors::AppError;
 use quota::QuotaSnapshot;
@@ -66,12 +68,74 @@ struct RpcResponse {
     error: Option<RpcError>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RpcError {
     code: &'static str,
     message: String,
     diagnostics: Option<String>,
+}
+
+#[derive(Debug)]
+struct OwnedRefreshError {
+    owner_account_id: Option<String>,
+    error: RpcError,
+}
+
+#[derive(Debug, Default)]
+struct QuotaCache {
+    snapshot: Option<QuotaSnapshot>,
+    owner_account_id: Option<String>,
+    refresh_error: Option<OwnedRefreshError>,
+}
+
+impl QuotaCache {
+    fn synchronize_owner(&mut self, owner_account_id: &Option<String>) {
+        if self
+            .refresh_error
+            .as_ref()
+            .is_some_and(|cached| &cached.owner_account_id != owner_account_id)
+        {
+            self.refresh_error = None;
+        }
+    }
+
+    fn should_refresh(&self, force: bool, owner_account_id: &Option<String>) -> bool {
+        force
+            || self.snapshot.is_none()
+            || owner_account_id.is_none()
+            || &self.owner_account_id != owner_account_id
+    }
+
+    fn record_success(&mut self, owner_account_id: Option<String>, snapshot: QuotaSnapshot) {
+        self.snapshot = Some(snapshot);
+        self.owner_account_id = owner_account_id;
+        self.refresh_error = None;
+    }
+
+    fn record_failure(&mut self, owner_account_id: Option<String>, error: RpcError) {
+        self.refresh_error = Some(OwnedRefreshError {
+            owner_account_id,
+            error,
+        });
+    }
+
+    fn snapshot_for(&self, owner_account_id: &Option<String>) -> Option<QuotaSnapshot> {
+        (owner_account_id.is_some() && &self.owner_account_id == owner_account_id)
+            .then(|| self.snapshot.clone())
+            .flatten()
+    }
+
+    fn error_for(&self, owner_account_id: &Option<String>) -> Option<RpcError> {
+        self.refresh_error
+            .as_ref()
+            .filter(|cached| &cached.owner_account_id == owner_account_id)
+            .map(|cached| cached.error.clone())
+    }
+
+    fn clear(&mut self) {
+        *self = Self::default();
+    }
 }
 
 impl From<AppError> for RpcError {
@@ -114,8 +178,7 @@ struct Host {
     switch_backups_dir: PathBuf,
     settings_path: PathBuf,
     session_manager: SessionManager,
-    cached_quota: Option<QuotaSnapshot>,
-    cached_quota_owner_account_id: Option<String>,
+    quota_cache: QuotaCache,
     shutdown_requested: bool,
 }
 
@@ -147,8 +210,7 @@ impl Host {
                 codex_home,
                 manager_home: app_data_dir.join("SessionManager"),
             }),
-            cached_quota: None,
-            cached_quota_owner_account_id: None,
+            quota_cache: QuotaCache::default(),
             shutdown_requested: false,
         })
     }
@@ -214,8 +276,7 @@ impl Host {
                     .await
                     .err()
                     .map(|error| error.to_string());
-                self.cached_quota = None;
-                self.cached_quota_owner_account_id = None;
+                self.quota_cache.clear();
                 let mut dashboard = self.dashboard(true).await?;
                 if let Value::Object(ref mut object) = dashboard {
                     object.insert("rolloutUpdates".into(), json!(rollout_updates));
@@ -225,8 +286,7 @@ impl Host {
             }
             "rollback" => {
                 RestorePointManager::new(self.switch_backups_dir.clone()).restore_latest()?;
-                self.cached_quota = None;
-                self.cached_quota_owner_account_id = None;
+                self.quota_cache.clear();
                 self.dashboard(true).await
             }
             "openCodexFolder" => {
@@ -267,24 +327,25 @@ impl Host {
         let listed = self.vault().list_accounts()?;
         let (active_account_id, active_owner_account_id) =
             detect_active_account(&self.codex_home, &listed.records);
-        let owner_matches_cache = active_owner_account_id.is_some()
-            && self.cached_quota_owner_account_id == active_owner_account_id;
-        let mut last_error = None;
-        if refresh || self.cached_quota.is_none() || !owner_matches_cache {
+        self.quota_cache
+            .synchronize_owner(&active_owner_account_id);
+        if self
+            .quota_cache
+            .should_refresh(refresh, &active_owner_account_id)
+        {
             let refresh_owner_account_id = active_owner_account_id.clone();
             match quota::fetch_current_quota(&self.codex_home, Duration::from_secs(12)).await {
-                Ok(quota) => {
-                    self.cached_quota = Some(quota);
-                    self.cached_quota_owner_account_id = refresh_owner_account_id;
-                }
-                Err(error) => last_error = Some(RpcError::from(error)),
+                Ok(quota) => self
+                    .quota_cache
+                    .record_success(refresh_owner_account_id, quota),
+                Err(error) => self
+                    .quota_cache
+                    .record_failure(refresh_owner_account_id, RpcError::from(error)),
             }
         }
 
-        let quota = (active_owner_account_id.is_some()
-            && self.cached_quota_owner_account_id == active_owner_account_id)
-            .then(|| self.cached_quota.clone())
-            .flatten();
+        let quota = self.quota_cache.snapshot_for(&active_owner_account_id);
+        let last_error = self.quota_cache.error_for(&active_owner_account_id);
         let accounts = listed
             .records
             .into_iter()
@@ -516,9 +577,23 @@ fn record_matches_current(record: &VaultAccountRecord, auth: Option<&Value>, con
         }
         AccountPayload::Api(payload) => {
             auth.get("OPENAI_API_KEY").and_then(Value::as_str) == Some(payload.api_key.as_str())
-                && (config.contains(&payload.base_url) || payload.base_url.is_empty())
+                && configured_provider_base_url(config)
+                    .zip(normalize_api_base_url(&payload.base_url, true))
+                    .map(|(configured, saved)| configured == saved)
+                    .unwrap_or(false)
         }
     }
+}
+
+fn configured_provider_base_url(config: &str) -> Option<String> {
+    let document = toml::from_str::<toml::Value>(config).ok()?;
+    let provider = document.get("model_provider")?.as_str()?;
+    let base_url = document
+        .get("model_providers")?
+        .get(provider)?
+        .get("base_url")?
+        .as_str()?;
+    normalize_api_base_url(base_url, true)
 }
 
 fn auth_email(auth: &Value) -> Option<String> {
@@ -569,6 +644,7 @@ fn error_code(error: &AppError) -> &'static str {
 mod tests {
     use super::*;
     use account_models::{AccountId, ApiAccountPayload};
+    use quota::{AccountSummary, QuotaWindow};
 
     #[test]
     fn chatgpt_record_matches_current_email() {
@@ -616,12 +692,37 @@ mod tests {
         assert!(record_matches_current(
             &record,
             Some(&json!({ "OPENAI_API_KEY": "sk-test" })),
-            "base_url = \"https://example.test/v1\""
+            "model_provider = \"workspace\"\n[model_providers.workspace]\nbase_url = \"https://example.test/v1/\""
         ));
         assert!(!record_matches_current(
             &record,
             Some(&json!({ "OPENAI_API_KEY": "wrong" })),
-            "base_url = \"https://example.test/v1\""
+            "model_provider = \"workspace\"\n[model_providers.workspace]\nbase_url = \"https://example.test/v1\""
+        ));
+        assert!(!record_matches_current(
+            &record,
+            Some(&json!({ "OPENAI_API_KEY": "sk-test" })),
+            "model_provider = \"other\"\n[model_providers.other]\nbase_url = \"https://other.test/v1\"\n[model_providers.workspace]\nbase_url = \"https://example.test/v1\""
+        ));
+    }
+
+    #[test]
+    fn api_record_normalizes_equivalent_provider_urls() {
+        let record = VaultAccountRecord::new_api(
+            AccountId::new("api"),
+            "Workspace",
+            ApiAccountPayload {
+                api_key: "sk-test".into(),
+                base_url: "https://EXAMPLE.test".into(),
+                model: None,
+                provider_name: Some("workspace".into()),
+            },
+            Utc::now(),
+        );
+        assert!(record_matches_current(
+            &record,
+            Some(&json!({ "OPENAI_API_KEY": "sk-test" })),
+            "model_provider = \"workspace\"\n[model_providers.workspace]\nbase_url = \"https://example.test/v1/\""
         ));
     }
 
@@ -654,6 +755,55 @@ mod tests {
     }
 
     #[test]
+    fn quota_cache_persists_same_owner_failure_and_hides_it_after_switch() {
+        let owner = Some("acct-a".to_string());
+        let mut cache = QuotaCache::default();
+        cache.record_success(owner.clone(), quota_snapshot(71.0));
+        let error = RpcError {
+            code: "quotaTimeout",
+            message: "Quota refresh timed out".into(),
+            diagnostics: None,
+        };
+        cache.record_failure(owner.clone(), error.clone());
+
+        cache.synchronize_owner(&owner);
+        assert!(!cache.should_refresh(false, &owner));
+        assert_eq!(cache.error_for(&owner), Some(error));
+        assert_eq!(
+            cache.snapshot_for(&owner).unwrap().windows[0].remaining_percent,
+            71.0
+        );
+
+        let other_owner = Some("acct-b".to_string());
+        cache.synchronize_owner(&other_owner);
+        assert!(cache.error_for(&other_owner).is_none());
+        assert!(cache.snapshot_for(&other_owner).is_none());
+        assert!(cache.should_refresh(false, &other_owner));
+    }
+
+    #[test]
+    fn quota_cache_success_clears_same_owner_failure() {
+        let owner = Some("acct-a".to_string());
+        let mut cache = QuotaCache::default();
+        cache.record_failure(
+            owner.clone(),
+            RpcError {
+                code: "quotaTimeout",
+                message: "Quota refresh timed out".into(),
+                diagnostics: None,
+            },
+        );
+
+        cache.record_success(owner.clone(), quota_snapshot(82.0));
+
+        assert!(cache.error_for(&owner).is_none());
+        assert_eq!(
+            cache.snapshot_for(&owner).unwrap().windows[0].remaining_percent,
+            82.0
+        );
+    }
+
+    #[test]
     fn protocol_serializes_one_line_response() {
         let response = RpcResponse {
             id: json!(7),
@@ -664,5 +814,22 @@ mod tests {
         let line = serde_json::to_string(&response).unwrap();
         assert!(!line.contains('\n'));
         assert!(line.contains("\"ok\":true"));
+    }
+
+    fn quota_snapshot(remaining_percent: f64) -> QuotaSnapshot {
+        QuotaSnapshot {
+            account: AccountSummary {
+                id: Some("remote-account".into()),
+                email: Some("ada@example.com".into()),
+                account_type: "chatgpt".into(),
+            },
+            windows: vec![QuotaWindow {
+                label: "1w".into(),
+                remaining_percent,
+                window_duration_mins: Some(10_080),
+                resets_at: None,
+            }],
+            fetched_at: Utc::now(),
+        }
     }
 }

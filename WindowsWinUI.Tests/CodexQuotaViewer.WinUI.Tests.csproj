@@ -15,6 +15,10 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\WindowsWinUI\DashboardPresentation.cs" Link="DashboardPresentation.cs" />
+    <Compile Include="..\WindowsWinUI\Models.cs" Link="Models.cs" />
+    <Compile Include="..\WindowsWinUI\SettingsSaveTransaction.cs" Link="SettingsSaveTransaction.cs" />
+    <Compile Include="..\WindowsWinUI\WindowActivationPolicy.cs" Link="WindowActivationPolicy.cs" />
     <Compile Include="..\WindowsWinUI\WindowGeometry.cs" Link="WindowGeometry.cs" />
   </ItemGroup>
 </Project>

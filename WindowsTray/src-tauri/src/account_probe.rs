@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::account_models::normalize_api_base_url;
 use crate::errors::AppError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,7 +31,7 @@ async fn probe_api_account_inner(
         return Err(AppError::AccountValidationFailed("API key is required".into()));
     }
 
-    let normalized_base_url = normalize_base_url(&base_url, true)
+    let normalized_base_url = normalize_api_base_url(&base_url, true)
         .ok_or_else(|| AppError::AccountValidationFailed("Invalid base URL".into()))?;
 
     let client = reqwest::Client::builder()
@@ -71,40 +72,6 @@ async fn probe_api_account_inner(
     })
 }
 
-fn normalize_base_url(raw: &str, ensure_v1: bool) -> Option<String> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let mut url = Url::parse(trimmed).ok()?;
-    if url.scheme() != "http" && url.scheme() != "https" {
-        return None;
-    }
-
-    // Remove trailing slashes from path
-    let mut path = url.path().trim_end_matches('/').to_string();
-    
-    if ensure_v1 && !path.to_lowercase().ends_with("/v1") && !path.to_lowercase().is_empty() && path != "/" {
-        if !path.ends_with('/') {
-            path.push('/');
-        }
-        path.push_str("v1");
-    } else if ensure_v1 && (path.is_empty() || path == "/") {
-        path = "/v1".to_string();
-    }
-
-    url.set_path(&path);
-    url.set_query(None);
-    url.set_fragment(None);
-
-    let mut result = url.to_string();
-    if result.ends_with('/') {
-        result.pop();
-    }
-    Some(result)
-}
-
 fn parse_model_ids(body: &serde_json::Value) -> Vec<String> {
     body.get("data")
         .and_then(|data| data.as_array())
@@ -139,19 +106,19 @@ mod tests {
     #[test]
     fn normalizes_base_url() {
         assert_eq!(
-            normalize_base_url("https://api.openai.com", true),
+            normalize_api_base_url("https://api.openai.com", true),
             Some("https://api.openai.com/v1".to_string())
         );
         assert_eq!(
-            normalize_base_url("https://api.openai.com/v1/", true),
+            normalize_api_base_url("https://api.openai.com/v1/", true),
             Some("https://api.openai.com/v1".to_string())
         );
         assert_eq!(
-            normalize_base_url("http://localhost:11434/v1", true),
+            normalize_api_base_url("http://localhost:11434/v1", true),
             Some("http://localhost:11434/v1".to_string())
         );
         assert_eq!(
-            normalize_base_url("https://api.example.com/custom", true),
+            normalize_api_base_url("https://api.example.com/custom", true),
             Some("https://api.example.com/custom/v1".to_string())
         );
     }

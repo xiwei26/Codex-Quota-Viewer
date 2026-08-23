@@ -141,7 +141,8 @@ impl AddApiAccountInput {
         if base_url.is_empty() {
             return Err(AccountValidationError::MissingBaseUrl);
         }
-        let base_url = normalize_base_url(base_url)?;
+        let base_url = normalize_api_base_url(base_url, false)
+            .ok_or(AccountValidationError::InvalidBaseUrl)?;
 
         Ok(ValidatedApiAccountInput {
             display_name: display_name.to_string(),
@@ -155,13 +156,24 @@ impl AddApiAccountInput {
     }
 }
 
-fn normalize_base_url(base_url: &str) -> Result<String, AccountValidationError> {
-    let parsed = Url::parse(base_url).map_err(|_| AccountValidationError::InvalidBaseUrl)?;
-    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
-        return Err(AccountValidationError::InvalidBaseUrl);
+pub fn normalize_api_base_url(raw: &str, ensure_v1: bool) -> Option<String> {
+    let mut url = Url::parse(raw.trim()).ok()?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return None;
     }
 
-    Ok(parsed.as_str().trim_end_matches('/').to_string())
+    let mut path = url.path().trim_end_matches('/').to_string();
+    if ensure_v1 && !path.to_ascii_lowercase().ends_with("/v1") {
+        if !path.is_empty() {
+            path.push('/');
+        }
+        path.push_str("v1");
+    }
+    url.set_path(&path);
+    url.set_query(None);
+    url.set_fragment(None);
+
+    Some(url.as_str().trim_end_matches('/').to_string())
 }
 
 fn trim_optional(value: Option<String>) -> Option<String> {

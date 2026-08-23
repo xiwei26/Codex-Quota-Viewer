@@ -38,12 +38,15 @@ public sealed class WidgetWindow : Window
     private readonly TextBlock _notice;
     private readonly Button _refreshButton;
     private CancellationTokenSource? _animation;
+    private CancellationTokenSource? _deactivationCheck;
     private CancellationTokenSource? _refresh;
+    private long _refreshGeneration;
     private int _currentX;
     private WidgetPlacement _placement;
     private DateTimeOffset _ignoreDeactivationUntil;
     private bool _shown;
     private bool _contextMenuVisible;
+    private bool _isWindowActive;
 
     public event EventHandler? SettingsRequested;
     public event EventHandler? OpenSessionManagerRequested;
@@ -119,9 +122,14 @@ public sealed class WidgetWindow : Window
     public void SetContextMenuVisible(bool visible)
     {
         _contextMenuVisible = visible;
-        if (!visible)
+        if (visible)
+        {
+            _deactivationCheck?.Cancel();
+        }
+        else
         {
             _ignoreDeactivationUntil = DateTimeOffset.UtcNow.AddMilliseconds(180);
+            ScheduleDeactivationCheck();
         }
     }
 
@@ -161,6 +169,7 @@ public sealed class WidgetWindow : Window
         {
             _root.Focus(FocusState.Programmatic);
         }
+        ScheduleDeactivationCheck();
     }
 
     public async Task HideAsync()
@@ -169,38 +178,55 @@ public sealed class WidgetWindow : Window
         {
             return;
         }
+        _deactivationCheck?.Cancel();
         _shown = false;
         var completed = await AnimateToAsync(_placement.HiddenX);
         if (completed && !_shown)
         {
             _appWindow.Hide();
             _presenter.IsAlwaysOnTop = false;
+            _isWindowActive = false;
         }
     }
 
     public async Task RefreshAsync(bool force)
     {
         _refresh?.Cancel();
-        _refresh?.Dispose();
-        _refresh = new CancellationTokenSource();
+        var refresh = new CancellationTokenSource();
+        _refresh = refresh;
+        var generation = ++_refreshGeneration;
         _refreshButton.IsEnabled = false;
         _updated.Text = force ? "Refreshing…" : "Loading…";
         try
         {
-            var state = await _core.GetDashboardAsync(force, _refresh.Token);
-            Render(state);
+            var state = await _core.GetDashboardAsync(force, refresh.Token);
+            if (generation == _refreshGeneration)
+            {
+                Render(state);
+            }
         }
         catch (OperationCanceledException)
         {
         }
         catch (Exception error)
         {
-            ShowNotice(error.Message);
-            _updated.Text = "Refresh failed";
+            if (generation == _refreshGeneration)
+            {
+                ShowNotice(error.Message);
+                _updated.Text = "Refresh failed";
+            }
         }
         finally
         {
-            _refreshButton.IsEnabled = true;
+            if (generation == _refreshGeneration)
+            {
+                _refreshButton.IsEnabled = true;
+                if (ReferenceEquals(_refresh, refresh))
+                {
+                    _refresh = null;
+                }
+            }
+            refresh.Dispose();
         }
     }
 
@@ -239,19 +265,55 @@ public sealed class WidgetWindow : Window
 
     private void OnActivated(object sender, WindowActivatedEventArgs args)
     {
-        if (args.WindowActivationState != WindowActivationState.Deactivated ||
-            !_shown ||
-            _contextMenuVisible ||
-            DateTimeOffset.UtcNow < _ignoreDeactivationUntil)
+        _isWindowActive = args.WindowActivationState != WindowActivationState.Deactivated;
+        if (_isWindowActive)
+        {
+            _deactivationCheck?.Cancel();
+            return;
+        }
+        ScheduleDeactivationCheck();
+    }
+
+    private void ScheduleDeactivationCheck()
+    {
+        if (!_shown || _contextMenuVisible || _isWindowActive)
         {
             return;
         }
+
+        _deactivationCheck?.Cancel();
+        var check = new CancellationTokenSource();
+        _deactivationCheck = check;
         _ = DispatcherQueue.TryEnqueue(async () =>
         {
-            await Task.Delay(100);
-            if (!_contextMenuVisible && _shown)
+            try
             {
-                await HideAsync();
+                var delay = WindowActivationPolicy.DelayBeforeRecheck(
+                    DateTimeOffset.UtcNow,
+                    _ignoreDeactivationUntil);
+                await Task.Delay(delay, check.Token);
+                var isForeground = NativeMethods.GetForegroundWindow() == _windowHandle;
+                if (WindowActivationPolicy.ShouldHide(
+                    _shown,
+                    _contextMenuVisible,
+                    _isWindowActive,
+                    isForeground,
+                    DateTimeOffset.UtcNow,
+                    _ignoreDeactivationUntil))
+                {
+                    await HideAsync();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                if (ReferenceEquals(_deactivationCheck, check))
+                {
+                    _deactivationCheck = null;
+                }
+                check.Dispose();
             }
         });
     }
@@ -259,11 +321,9 @@ public sealed class WidgetWindow : Window
     private void Render(DashboardState state)
     {
         var quota = state.Quota;
-        _accountName.Text = quota?.Account.Email
-            ?? (quota?.Account.AccountType == "apiKey" ? "API account" : "Current Codex account");
-        _accountStatus.Text = quota is null
-            ? "Quota unavailable"
-            : $"Active {FriendlyAccountType(quota.Account.AccountType)} account";
+        var presentation = DashboardPresentation.Resolve(state);
+        _accountName.Text = presentation.AccountName;
+        _accountStatus.Text = presentation.AccountStatus;
 
         _quotaPanel.Children.Clear();
         if (quota?.Windows.Count > 0)
@@ -275,10 +335,7 @@ public sealed class WidgetWindow : Window
         }
         else
         {
-            _quotaPanel.Children.Add(BuildUnavailableQuotaCard(
-                quota?.Account.AccountType == "apiKey"
-                    ? "API accounts do not expose Codex rate-limit windows."
-                    : "No rate-limit windows are available."));
+            _quotaPanel.Children.Add(BuildUnavailableQuotaCard(presentation.UnavailableQuotaMessage));
         }
 
         _accountsPanel.Children.Clear();
@@ -310,7 +367,7 @@ public sealed class WidgetWindow : Window
         _updated.Text = $"Updated {RelativeTime(fetched)}";
         if (state.LastError is not null)
         {
-            ShowNotice($"Showing the last successful quota snapshot. {state.LastError}");
+            ShowNotice(DashboardPresentation.RefreshErrorNotice(state));
         }
         else if (!string.IsNullOrWhiteSpace(state.SettingsIssue))
         {
@@ -679,13 +736,6 @@ public sealed class WidgetWindow : Window
         }
         return $"{window.Label} limit";
     }
-
-    private static string FriendlyAccountType(string type) => type switch
-    {
-        "chatgpt" => "ChatGPT",
-        "apiKey" => "API",
-        _ => "Codex"
-    };
 
     private static string ResetText(long? unixSeconds)
     {
