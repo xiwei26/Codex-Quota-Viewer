@@ -11,6 +11,7 @@ docs/*
 docs/images/*
 !docs/images/menu-screenshot.png
 !docs/images/session-manager-screenshot.png
+!docs/images/windows-widget-concept.png
 !docs/superpowers/
 !docs/superpowers/specs/
 !docs/superpowers/specs/*.md
@@ -45,3 +46,8 @@ WindowsTray/src-tauri/gen/
 WindowsTray/src-tauri/resources/
 WindowsTray/src-tauri/NodeRuntime/
 WindowsTray/src-tauri/SessionManager/
+WindowsCoreHost/target/
+WindowsWinUI/bin/
+WindowsWinUI/obj/
+WindowsWinUI.Tests/bin/
+WindowsWinUI.Tests/obj/

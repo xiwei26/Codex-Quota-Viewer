@@ -322,10 +322,14 @@ mod tests {
                     QuotaWindow {
                         label: "5h".to_string(),
                         remaining_percent: 42.4,
+                        window_duration_mins: Some(300),
+                        resets_at: None,
                     },
                     QuotaWindow {
                         label: "1w".to_string(),
                         remaining_percent: 88.0,
+                        window_duration_mins: Some(10_080),
+                        resets_at: None,
                     },
                 ],
                 fetched_at: Utc::now(),

@@ -4,6 +4,7 @@
 
 > 当前 macOS 正式版：`1.2.0`
 > Windows 托盘版：`0.1.0`
+> Windows 原生小组件预览版：WinUI 3 / Windows App SDK 1.8
 >
 > 1.2.0 更新：
 > - 新增 **第三方 Provider 模式**：Codex 保持普通 ChatGPT 账号登录，但实际请求使用已保存的 API 账号。
@@ -214,6 +215,12 @@ Codex Quota Viewer 是一个原生 macOS 菜单栏应用。它把 Codex 用户�
 - 已登录的 Codex 配置：`%USERPROFILE%\.codex\auth.json`
 - 仅构建需要：Node，Rust/Cargo，以及 Visual Studio C++ Build Tools
 
+对于原生 WinUI 3 小组件：
+
+- Windows 10 1809 或更高版本，或 Windows 11
+- 完整源码构建需要 .NET 8 SDK、Rust/Cargo 和 Node 22 或更高版本
+- `%USERPROFILE%\.codex\auth.json` 中存在可用的本地 Codex 登录
+
 ## 从源码构建
 
 ### macOS 应用
@@ -242,7 +249,61 @@ swift build -c release --product CodexQuotaViewer
 ./scripts/verify-all.sh
 ```
 
-### Windows 托盘 MVP 版本
+### Windows 原生小组件（WinUI 3）
+
+原生 Windows 壳位于 `WindowsWinUI`，与现有 Tauri 应用并行保留。程序启动后隐藏在
+通知区域；左键托盘图标会在该图标所在显示器的右侧显示/隐藏一个预热好的无边框面板，
+右键则显示命令菜单。面板会按显示器 WorkArea 定位，适配多屏和混合 DPI，显示期间
+临时置顶，使用可取消的滑入/滑出动画，并在失焦或按 Esc 时收起。Windows 11 可用时
+使用 Desktop Acrylic；Windows 10、关闭透明效果或材质不可用时自动使用深色渐变回退。
+
+![Windows 原生小组件概念图](docs/images/windows-widget-concept.png)
+
+界面由 .NET 8 上的 C# WinUI 3 实现。常驻的 Rust JSON Lines CoreHost 直接复用现有
+额度、账号仓、Safe Switch、设置、修复和 Session Manager 模块。两套 Windows 壳明确
+共用同一个数据根，账号和设置不会分叉：
+
+```text
+%APPDATA%\com.halfmelon.codexquotaviewer.windows
+```
+
+小组件已经支持当前账号真实额度（含重置时间）、旧快照与刷新错误提示、保存当前
+ChatGPT 账号、添加 API 账号、重命名/移除/激活账号、General 与 Accounts 设置、开机
+启动、Session Manager、Repair Now、CoreHost 回滚，以及打开 Codex/账号仓目录。
+第三方 Provider 模式和 API 模型自动探测目前仍需使用 Tauri 设置界面。
+
+构建并发布完整原生目录：
+
+```powershell
+scripts\build-windows-winui.ps1
+```
+
+脚本会运行 Rust 与窗口几何测试、构建内置 Session Manager、发布自带 Windows App SDK
+的文件，并暂存 Node runtime。产物为：
+
+```text
+dist\CodexQuotaViewer.WinUI\CodexQuotaViewer.WinUI.exe
+```
+
+运行（启动时按设计保持隐藏）：
+
+```powershell
+scripts\run-windows-winui.ps1
+```
+
+开发阶段如不想重复构建 Session Manager，可以使用：
+
+```powershell
+scripts\build-windows-winui.ps1 -SkipSessionManager
+scripts\verify-windows-winui.ps1
+```
+
+当前预览版采用免安装目录发布，还没有生成安装器；请保持发布目录完整，因为其中包含
+WinUI runtime、Rust CoreHost、图标资源、Session Manager 和 Node runtime。原生预览版
+界面目前仅提供英文；Language 控件会继续保存与 Tauri 壳共享的设置，原生中文本地化仍是
+后续工作。
+
+### Windows 托盘 MVP 版本（Tauri）
 
 本仓库现在包含一个基于 Tauri 的 Windows 托盘应用。它专注于显示当前活动的 Codex 账号额度、支持配置的刷新频率、General 和 Accounts 设置、保存 ChatGPT/API 账号（支持 API 自动探测）、直接激活账号（带 Safe Switch 备份与回滚）、ChatGPT 登录的第三方 Provider 模式、打开内置的 Session Manager、自动及手动修复本地官方线程元数据、Safe Switch 或 Provider 模式切换时的历史会话同步、切换时的 Codex 桌面进程关闭/重开保护、Accounts 页面本地 Provider 同步检查器、打开本地 Codex 目录，以及干净地退出。
 

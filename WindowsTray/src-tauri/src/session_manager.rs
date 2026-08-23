@@ -1,3 +1,5 @@
+use std::fs::{self, File, OpenOptions};
+use std::io;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
@@ -18,7 +20,7 @@ pub struct SessionManager {
     owned_child: Option<tokio::process::Child>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OfficialRepairSummary {
     pub created_threads: u32,
@@ -65,9 +67,42 @@ impl SessionManager {
             return Ok(false);
         }
 
+        let _startup_lock = self.acquire_startup_lock(Duration::from_secs(12)).await?;
+        if self.is_healthy().await {
+            return Ok(false);
+        }
+
         self.start_owned_process()?;
         self.wait_until_healthy(Duration::from_secs(10)).await?;
         Ok(true)
+    }
+
+    async fn acquire_startup_lock(&self, timeout: Duration) -> Result<File, AppError> {
+        fs::create_dir_all(&self.paths.manager_home)
+            .map_err(|error| AppError::SessionManagerStartFailed(error.to_string()))?;
+        let lock_file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(self.paths.manager_home.join("startup.lock"))
+            .map_err(|error| AppError::SessionManagerStartFailed(error.to_string()))?;
+        let started = Instant::now();
+        loop {
+            match fs2::FileExt::try_lock_exclusive(&lock_file) {
+                Ok(()) => return Ok(lock_file),
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    if started.elapsed() >= timeout {
+                        return Err(AppError::SessionManagerStartFailed(
+                            "Timed out waiting for the shared Session Manager startup lock.".into(),
+                        ));
+                    }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                Err(error) => {
+                    return Err(AppError::SessionManagerStartFailed(error.to_string()));
+                }
+            }
+        }
     }
 
     fn start_owned_process(&mut self) -> Result<(), AppError> {

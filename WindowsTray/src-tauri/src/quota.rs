@@ -19,9 +19,14 @@ pub struct AccountSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct QuotaWindow {
     pub label: String,
     pub remaining_percent: f64,
+    #[serde(default)]
+    pub window_duration_mins: Option<i64>,
+    #[serde(default)]
+    pub resets_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -103,6 +108,13 @@ fn parse_flat_windows(windows_node: &[serde_json::Value]) -> Vec<QuotaWindow> {
             Some(QuotaWindow {
                 label,
                 remaining_percent,
+                window_duration_mins: window
+                    .get("windowDurationMins")
+                    .and_then(|value| value.as_i64()),
+                resets_at: window
+                    .get("resetsAt")
+                    .or_else(|| window.get("resetAt"))
+                    .and_then(|value| value.as_i64()),
             })
         })
         .collect()
@@ -123,6 +135,10 @@ fn parse_primary_secondary_windows(rate_limits_node: &serde_json::Value) -> Vec<
                         .and_then(|value| value.as_i64()),
                 ),
                 remaining_percent,
+                window_duration_mins: window
+                    .get("windowDurationMins")
+                    .and_then(|value| value.as_i64()),
+                resets_at: window.get("resetsAt").and_then(|value| value.as_i64()),
             })
         })
         .collect()
@@ -484,8 +500,8 @@ mod tests {
             json!({
                 "rateLimits": {
                     "windows": [
-                        { "label": "5h", "remainingPercent": 42.5 },
-                        { "label": "1w", "remainingPercent": 88.0 }
+                        { "label": "5h", "remainingPercent": 42.5, "windowDurationMins": 300, "resetsAt": 1_800_000_000 },
+                        { "label": "1w", "remainingPercent": 88.0, "windowDurationMins": 10080, "resetsAt": 1_800_086_400 }
                     ]
                 }
             }),
@@ -495,6 +511,8 @@ mod tests {
         assert_eq!(snapshot.account.email.as_deref(), Some("ada@example.com"));
         assert_eq!(snapshot.windows[0].label, "5h");
         assert_eq!(snapshot.windows[0].remaining_percent, 42.5);
+        assert_eq!(snapshot.windows[0].window_duration_mins, Some(300));
+        assert_eq!(snapshot.windows[0].resets_at, Some(1_800_000_000));
         assert_eq!(snapshot.windows[1].label, "1w");
     }
 
@@ -509,8 +527,8 @@ mod tests {
             }),
             json!({
                 "rateLimits": {
-                    "primary": { "usedPercent": 57.5, "windowDurationMins": 300 },
-                    "secondary": { "usedPercent": 12.0, "windowDurationMins": 10080 }
+                    "primary": { "usedPercent": 57.5, "windowDurationMins": 300, "resetsAt": 1_800_000_000 },
+                    "secondary": { "usedPercent": 12.0, "windowDurationMins": 10080, "resetsAt": 1_800_086_400 }
                 }
             }),
         )
@@ -518,6 +536,7 @@ mod tests {
 
         assert_eq!(snapshot.windows[0].label, "5h");
         assert_eq!(snapshot.windows[0].remaining_percent, 42.5);
+        assert_eq!(snapshot.windows[0].resets_at, Some(1_800_000_000));
         assert_eq!(snapshot.windows[1].label, "1w");
         assert_eq!(snapshot.windows[1].remaining_percent, 88.0);
     }

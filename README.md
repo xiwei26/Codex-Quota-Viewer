@@ -4,6 +4,7 @@ English | [中文](README.zh-CN.md)
 
 > Stable macOS release: `1.2.0`
 > Windows tray release: `0.1.0`
+> Native Windows widget preview: WinUI 3 / Windows App SDK 1.8
 >
 > 1.2.0 update:
 > - Adds **third-party Provider mode** for ChatGPT logins, so Codex can stay signed in with the normal ChatGPT account while requests use a saved API account.
@@ -238,6 +239,12 @@ For the Windows tray MVP:
 - A signed-in Codex profile in `%USERPROFILE%\.codex\auth.json`
 - Build only: Node, Rust/Cargo, and Visual Studio C++ Build Tools
 
+For the native WinUI 3 widget:
+
+- Windows 10 version 1809 or later, or Windows 11
+- .NET 8 SDK, Rust/Cargo, and Node 22 or later for a full source build
+- A local Codex login in `%USERPROFILE%\.codex\auth.json`
+
 ## Build From Source
 
 ### macOS app
@@ -266,7 +273,68 @@ If you want the project verification suite:
 ./scripts/verify-all.sh
 ```
 
-### Windows tray MVP
+### Native Windows widget (WinUI 3)
+
+The native Windows shell lives beside the existing Tauri app in `WindowsWinUI`.
+It starts hidden in the notification area. A left click toggles one pre-warmed,
+borderless panel on the right side of the display containing the tray icon;
+right click opens the command menu. The panel follows the monitor work area,
+handles per-monitor DPI, temporarily stays on top, slides in and out with a
+cancellable animation, and hides on focus loss or Escape. Windows 11 uses
+Desktop Acrylic when available; the dark solid/gradient surface is the Windows
+10 and transparency-disabled fallback.
+
+![Native Windows widget concept](docs/images/windows-widget-concept.png)
+
+The UI is a native C# WinUI 3 app on .NET 8. A small persistent Rust JSON Lines
+CoreHost reuses the existing quota, account vault, Safe Switch, settings,
+repair, and Session Manager modules. Both Windows shells intentionally use the
+same data root:
+
+```text
+%APPDATA%\com.halfmelon.codexquotaviewer.windows
+```
+
+The widget supports live current-account quota (including reset time), stale
+snapshot reporting, saved-account import/add/rename/forget/activate, General
+and Accounts settings, launch at login, Session Manager, Repair Now, rollback
+through the CoreHost, and opening the Codex/vault folders. Third-party Provider
+mode and API model probing remain in the Tauri settings UI for now.
+
+Build and publish the complete native folder:
+
+```powershell
+scripts\build-windows-winui.ps1
+```
+
+The script runs Rust and window-geometry tests, builds the bundled Session
+Manager, publishes the self-contained Windows App SDK files, and stages a Node
+runtime. Output:
+
+```text
+dist\CodexQuotaViewer.WinUI\CodexQuotaViewer.WinUI.exe
+```
+
+Run it (startup is intentionally hidden):
+
+```powershell
+scripts\run-windows-winui.ps1
+```
+
+For a quick developer build without rebuilding Session Manager assets:
+
+```powershell
+scripts\build-windows-winui.ps1 -SkipSessionManager
+scripts\verify-windows-winui.ps1
+```
+
+The preview is an unpackaged folder deployment rather than an installer. Keep
+the published folder together because it contains the WinUI runtime, Rust
+CoreHost, icon assets, Session Manager, and Node runtime. The native preview UI
+is currently English-only; its Language control preserves the setting shared
+with the Tauri shell, while native Chinese localization remains follow-up work.
+
+### Windows tray MVP (Tauri)
 
 The repository now includes a Tauri-based Windows tray app. It focuses on
 showing the current active Codex account quota, configurable refresh behavior,
