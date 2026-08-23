@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 mod account_activation;
 mod account_commands;
@@ -146,8 +146,67 @@ fn widget_open_codex_folder(
     Ok(())
 }
 
+fn resolve_initial_state() -> (SharedAppState, AppSettings) {
+    let codex_home = resolve_codex_home()
+        .unwrap_or_else(|_| std::path::PathBuf::from(r"C:\.codex-missing"));
+    let app_data_dir = std::env::var_os("APPDATA")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::var_os("USERPROFILE")
+                .map(|p| std::path::PathBuf::from(p).join("AppData").join("Roaming"))
+                .unwrap_or_else(|| std::path::PathBuf::from(r"C:\AppData"))
+        })
+        .join("com.halfmelon.codexquotaviewer.windows");
+    let resource_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .filter(|p| p.join("SessionManager").exists() || p.join("NodeRuntime").exists())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+
+    let session_paths = SessionManagerPaths {
+        node_exe: resource_dir.join("NodeRuntime").join("node.exe"),
+        server_entry: resource_dir
+            .join("SessionManager")
+            .join("dist")
+            .join("server")
+            .join("index.js"),
+        app_dir: resource_dir.join("SessionManager"),
+        codex_home: codex_home.clone(),
+        manager_home: app_data_dir.join("SessionManager"),
+    };
+    let settings_path = app_data_dir.join("settings.json");
+    let accounts_dir = app_data_dir.join("Accounts");
+    let provider_mode_dir = app_data_dir.join("ProviderMode");
+    let switch_backups_dir = app_data_dir.join("SwitchBackups");
+    let settings_result = load_settings(&settings_path);
+    let settings = settings_result.settings.clone();
+
+    let state: SharedAppState = Arc::new(AppState {
+        codex_home,
+        settings_path,
+        accounts_dir,
+        provider_mode_dir,
+        switch_backups_dir,
+        settings: tauri::async_runtime::Mutex::new(settings.clone()),
+        settings_load_issue: tauri::async_runtime::Mutex::new(settings_result.issue),
+        tray_snapshot: tauri::async_runtime::Mutex::new(TraySnapshot::loading()),
+        session_manager: tauri::async_runtime::Mutex::new(SessionManager::new(
+            session_paths,
+        )),
+        refresh_scheduler: tauri::async_runtime::Mutex::new(RefreshScheduler::new()),
+        refresh_gate: std::sync::Mutex::new(RefreshGate::default()),
+        dashboard_revision: std::sync::atomic::AtomicU64::new(0),
+        quota_timeout: Duration::from_secs(10),
+    });
+
+    (state, settings)
+}
+
 fn main() {
+    let (state, settings) = resolve_initial_state();
+
     tauri::Builder::default()
+        .manage(state.clone())
         .plugin(tauri_plugin_single_instance::init(
             |app, _arguments, _cwd| {
                 widget::show_widget(app, None);
@@ -176,49 +235,8 @@ fn main() {
             account_commands::open_vault_folder,
             account_probe::probe_api_account
         ])
-        .setup(|app| {
+        .setup(move |app| {
             let app_handle = app.handle().clone();
-            let codex_home = resolve_codex_home()
-                .unwrap_or_else(|_| std::path::PathBuf::from(r"C:\.codex-missing"));
-            let resource_dir = app.path().resource_dir()?;
-            let app_data_dir = app.path().app_data_dir()?;
-            let session_paths = SessionManagerPaths {
-                node_exe: resource_dir.join("NodeRuntime").join("node.exe"),
-                server_entry: resource_dir
-                    .join("SessionManager")
-                    .join("dist")
-                    .join("server")
-                    .join("index.js"),
-                app_dir: resource_dir.join("SessionManager"),
-                codex_home: codex_home.clone(),
-                manager_home: app_data_dir.join("SessionManager"),
-            };
-            let settings_path = app_data_dir.join("settings.json");
-            let accounts_dir = app_data_dir.join("Accounts");
-            let provider_mode_dir = app_data_dir.join("ProviderMode");
-            let switch_backups_dir = app_data_dir.join("SwitchBackups");
-            let settings_result = load_settings(&settings_path);
-            let settings = settings_result.settings.clone();
-
-            let state: SharedAppState = Arc::new(AppState {
-                codex_home,
-                settings_path,
-                accounts_dir,
-                provider_mode_dir,
-                switch_backups_dir,
-                settings: tauri::async_runtime::Mutex::new(settings.clone()),
-                settings_load_issue: tauri::async_runtime::Mutex::new(settings_result.issue),
-                tray_snapshot: tauri::async_runtime::Mutex::new(TraySnapshot::loading()),
-                session_manager: tauri::async_runtime::Mutex::new(SessionManager::new(
-                    session_paths,
-                )),
-                refresh_scheduler: tauri::async_runtime::Mutex::new(RefreshScheduler::new()),
-                refresh_gate: std::sync::Mutex::new(RefreshGate::default()),
-                dashboard_revision: std::sync::atomic::AtomicU64::new(0),
-                quota_timeout: Duration::from_secs(10),
-            });
-
-            app.manage(state.clone());
             widget::prepare_windows(&app_handle);
             let resolved_language =
                 resolve_language(settings.app_language, &system_language_hints());
@@ -434,6 +452,7 @@ fn show_settings_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.set_focus();
+        let _ = app.emit_to("main", "settings-shown", ());
     }
 }
 

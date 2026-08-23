@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { renderAccounts } from "./accounts-view";
 import { escapeHtml } from "./dom";
@@ -36,6 +37,7 @@ function mountSettings(root: HTMLDivElement): void {
   let accountsPresentation: AccountsPresentation | null = null;
   let localProviderSync: LocalProviderSyncPresentation | null = null;
   let activeTab: "general" | "accounts" = "general";
+  let isLoading = false;
 
   function render(): void {
     if (!settingsPresentation || !accountsPresentation) {
@@ -84,15 +86,51 @@ function mountSettings(root: HTMLDivElement): void {
     });
   }
 
+  function renderError(errorMessage: string): void {
+    root.innerHTML = `
+      <main class="settings-shell settings-shell--error" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:24px; gap:16px; text-align:center;">
+        <div style="color:var(--text-danger, #ef4444); font-size:14px; word-break:break-word;">
+          ${escapeHtml(errorMessage)}
+        </div>
+        <button id="retrySettingsBtn" class="primary-button" style="padding:6px 16px; cursor:pointer;">
+          Retry / 重试
+        </button>
+      </main>
+    `;
+    document.querySelector("#retrySettingsBtn")?.addEventListener("click", () => {
+      void load();
+    });
+  }
+
   async function load(): Promise<void> {
+    if (isLoading) return;
+    isLoading = true;
     try {
-      settingsPresentation = await invoke<SettingsPresentation>("get_settings");
-      accountsPresentation = await invoke<AccountsPresentation>("get_accounts");
+      const [settings, accounts] = await Promise.all([
+        invoke<SettingsPresentation>("get_settings"),
+        invoke<AccountsPresentation>("get_accounts"),
+      ]);
+      settingsPresentation = settings;
+      accountsPresentation = accounts;
       render();
     } catch (error) {
-      root.textContent = String(error);
+      renderError(String(error));
+    } finally {
+      isLoading = false;
     }
   }
+
+  if (isTauri) {
+    void listen("settings-shown", () => {
+      void load();
+    });
+  }
+
+  window.addEventListener("focus", () => {
+    if (!settingsPresentation) {
+      void load();
+    }
+  });
 
   void load();
 }
