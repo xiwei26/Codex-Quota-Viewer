@@ -1,5 +1,5 @@
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::tray::TrayIconBuilder;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::AppHandle;
 
 use crate::account_commands::AccountsPresentation;
@@ -22,6 +22,25 @@ pub fn account_id_from_menu_id(menu_id: &str) -> Option<String> {
         .strip_prefix(MENU_ACCOUNT_PREFIX)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
+}
+
+pub(crate) fn account_scoped_snapshot(
+    snapshot: &TraySnapshot,
+    active_account_id: Option<&str>,
+) -> TraySnapshot {
+    let mut scoped = snapshot.clone();
+    let quota_is_current = match (
+        active_account_id,
+        snapshot.quota_owner_account_id.as_deref(),
+    ) {
+        (Some(active), Some(owner)) => active == owner,
+        (Some(_), None) => false,
+        (None, _) => true,
+    };
+    if !quota_is_current {
+        scoped.quota = None;
+    }
+    scoped
 }
 
 pub fn build_menu(
@@ -267,9 +286,20 @@ pub fn install_tray(
     let mut builder = TrayIconBuilder::with_id("main")
         .tooltip("Codex Quota Viewer")
         .menu(&menu)
-        .show_menu_on_left_click(true)
+        .show_menu_on_left_click(false)
         .on_menu_event(|app, event| {
             crate::handle_menu_event(app, event.id.as_ref());
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                position,
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                crate::widget::toggle_widget(tray.app_handle(), position);
+            }
         });
 
     if let Some(icon) = app.default_window_icon() {
@@ -311,7 +341,30 @@ mod tests {
 
     #[test]
     fn formats_quota_windows() {
-        let snapshot = TraySnapshot {
+        let snapshot = quota_snapshot();
+
+        assert_eq!(
+            quota_label(&snapshot, ResolvedAppLanguage::English),
+            "5h: 42%   1w: 88%"
+        );
+    }
+
+    #[test]
+    fn hides_quota_owned_by_the_previous_account() {
+        let mut snapshot = quota_snapshot();
+        snapshot.last_error = Some(crate::errors::AppError::SignInRequired);
+
+        let scoped = account_scoped_snapshot(&snapshot, Some("workspace"));
+
+        assert!(scoped.quota.is_none());
+        assert_eq!(
+            quota_label(&scoped, ResolvedAppLanguage::English),
+            "Sign in required"
+        );
+    }
+
+    fn quota_snapshot() -> TraySnapshot {
+        TraySnapshot {
             quota: Some(QuotaSnapshot {
                 account: AccountSummary {
                     id: Some("acct".to_string()),
@@ -321,23 +374,23 @@ mod tests {
                 windows: vec![
                     QuotaWindow {
                         label: "5h".to_string(),
+                        window_duration_mins: Some(300),
                         remaining_percent: 42.4,
+                        reset_at: None,
                     },
                     QuotaWindow {
                         label: "1w".to_string(),
+                        window_duration_mins: Some(10_080),
                         remaining_percent: 88.0,
+                        reset_at: None,
                     },
                 ],
                 fetched_at: Utc::now(),
             }),
+            quota_owner_account_id: Some("personal".to_string()),
             is_refreshing: false,
             last_error: None,
-        };
-
-        assert_eq!(
-            quota_label(&snapshot, ResolvedAppLanguage::English),
-            "5h: 42%   1w: 88%"
-        );
+        }
     }
 
     #[test]

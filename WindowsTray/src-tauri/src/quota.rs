@@ -21,7 +21,9 @@ pub struct AccountSummary {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct QuotaWindow {
     pub label: String,
+    pub window_duration_mins: Option<i64>,
     pub remaining_percent: f64,
+    pub reset_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -102,7 +104,11 @@ fn parse_flat_windows(windows_node: &[serde_json::Value]) -> Vec<QuotaWindow> {
             let remaining_percent = window.get("remainingPercent")?.as_f64()?;
             Some(QuotaWindow {
                 label,
-                remaining_percent,
+                window_duration_mins: window
+                    .get("windowDurationMins")
+                    .and_then(serde_json::Value::as_i64),
+                remaining_percent: remaining_percent.clamp(0.0, 100.0),
+                reset_at: parse_reset_at(window),
             })
         })
         .collect()
@@ -122,10 +128,56 @@ fn parse_primary_secondary_windows(rate_limits_node: &serde_json::Value) -> Vec<
                         .get("windowDurationMins")
                         .and_then(|value| value.as_i64()),
                 ),
+                window_duration_mins: window
+                    .get("windowDurationMins")
+                    .and_then(serde_json::Value::as_i64),
                 remaining_percent,
+                reset_at: parse_reset_at(window),
             })
         })
         .collect()
+}
+
+fn parse_reset_at(window: &serde_json::Value) -> Option<DateTime<Utc>> {
+    for key in ["resetAt", "resetsAt", "reset_at"] {
+        let Some(value) = window.get(key) else {
+            continue;
+        };
+
+        if let Some(timestamp) = value.as_i64() {
+            let seconds = if timestamp > 10_000_000_000 {
+                timestamp / 1_000
+            } else {
+                timestamp
+            };
+            if let Some(reset_at) = DateTime::from_timestamp(seconds, 0) {
+                return Some(reset_at);
+            }
+        }
+
+        if let Some(timestamp) = value.as_f64() {
+            let seconds = if timestamp > 10_000_000_000.0 {
+                timestamp / 1_000.0
+            } else {
+                timestamp
+            };
+            if let Some(reset_at) = DateTime::from_timestamp(seconds.floor() as i64, 0) {
+                return Some(reset_at);
+            }
+        }
+
+        if let Some(text) = value.as_str() {
+            if let Ok(reset_at) = DateTime::parse_from_rfc3339(text) {
+                return Some(reset_at.with_timezone(&Utc));
+            }
+        }
+    }
+
+    window
+        .get("resetAfterSeconds")
+        .and_then(serde_json::Value::as_i64)
+        .filter(|seconds| *seconds >= 0)
+        .map(|seconds| Utc::now() + chrono::Duration::seconds(seconds))
 }
 
 fn quota_window_label(duration_mins: Option<i64>) -> String {
@@ -484,7 +536,7 @@ mod tests {
             json!({
                 "rateLimits": {
                     "windows": [
-                        { "label": "5h", "remainingPercent": 42.5 },
+                        { "label": "5h", "remainingPercent": 42.5, "windowDurationMins": 300, "resetsAt": 1787479200 },
                         { "label": "1w", "remainingPercent": 88.0 }
                     ]
                 }
@@ -494,7 +546,12 @@ mod tests {
 
         assert_eq!(snapshot.account.email.as_deref(), Some("ada@example.com"));
         assert_eq!(snapshot.windows[0].label, "5h");
+        assert_eq!(snapshot.windows[0].window_duration_mins, Some(300));
         assert_eq!(snapshot.windows[0].remaining_percent, 42.5);
+        assert_eq!(
+            snapshot.windows[0].reset_at,
+            DateTime::from_timestamp(1_787_479_200, 0)
+        );
         assert_eq!(snapshot.windows[1].label, "1w");
     }
 
@@ -509,7 +566,7 @@ mod tests {
             }),
             json!({
                 "rateLimits": {
-                    "primary": { "usedPercent": 57.5, "windowDurationMins": 300 },
+                    "primary": { "usedPercent": 57.5, "windowDurationMins": 300, "resetsAt": 1787479200 },
                     "secondary": { "usedPercent": 12.0, "windowDurationMins": 10080 }
                 }
             }),
@@ -517,6 +574,11 @@ mod tests {
         .unwrap();
 
         assert_eq!(snapshot.windows[0].label, "5h");
+        assert_eq!(snapshot.windows[0].window_duration_mins, Some(300));
+        assert_eq!(
+            snapshot.windows[0].reset_at,
+            DateTime::from_timestamp(1_787_479_200, 0)
+        );
         assert_eq!(snapshot.windows[0].remaining_percent, 42.5);
         assert_eq!(snapshot.windows[1].label, "1w");
         assert_eq!(snapshot.windows[1].remaining_percent, 88.0);

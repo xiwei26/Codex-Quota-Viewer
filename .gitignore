@@ -11,6 +11,7 @@ docs/*
 docs/images/*
 !docs/images/menu-screenshot.png
 !docs/images/session-manager-screenshot.png
+!docs/images/windows-widget-concept.png
 !docs/superpowers/
 !docs/superpowers/specs/
 !docs/superpowers/specs/*.md
@@ -21,6 +22,8 @@ docs/images/*
 *.dmg
 *.pkg
 *.log
+.playwright-cli/
+output/playwright/
 
 .env
 .env.*
@@ -40,6 +43,7 @@ outputs/runtime/
 
 WindowsTray/node_modules/
 WindowsTray/dist/
+WindowsTray/output/playwright/
 WindowsTray/src-tauri/target/
 WindowsTray/src-tauri/gen/
 WindowsTray/src-tauri/resources/

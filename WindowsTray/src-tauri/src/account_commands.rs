@@ -187,6 +187,7 @@ pub async fn get_accounts(
 
 #[tauri::command]
 pub async fn import_current_chatgpt_account(
+    app: tauri::AppHandle,
     state: tauri::State<'_, SharedAppState>,
     display_name: Option<String>,
 ) -> Result<AccountsPresentation, String> {
@@ -196,7 +197,7 @@ pub async fn import_current_chatgpt_account(
     vault
         .import_current_chatgpt_account(&app_state.codex_home, display_name)
         .map_err(|error| app_error_message(language, &error))?;
-    build_accounts_presentation_with_provider_mode(
+    let presentation = build_accounts_presentation_with_provider_mode(
         &vault,
         &app_state.provider_mode_dir,
         language,
@@ -205,11 +206,14 @@ pub async fn import_current_chatgpt_account(
             LocalizedText::new("Account saved", "\u{8d26}\u{53f7}\u{5df2}\u{4fdd}\u{5b58}"),
         )),
     )
-    .map_err(|error| app_error_message(language, &error))
+    .map_err(|error| app_error_message(language, &error))?;
+    super::update_tray_from_state(&app, &app_state).await;
+    Ok(presentation)
 }
 
 #[tauri::command]
 pub async fn add_api_account(
+    app: tauri::AppHandle,
     state: tauri::State<'_, SharedAppState>,
     input: AddApiAccountInput,
 ) -> Result<AccountsPresentation, String> {
@@ -219,7 +223,7 @@ pub async fn add_api_account(
     vault
         .add_api_account(input)
         .map_err(|error| app_error_message(language, &error))?;
-    build_accounts_presentation_with_provider_mode(
+    let presentation = build_accounts_presentation_with_provider_mode(
         &vault,
         &app_state.provider_mode_dir,
         language,
@@ -228,7 +232,9 @@ pub async fn add_api_account(
             LocalizedText::new("Account saved", "\u{8d26}\u{53f7}\u{5df2}\u{4fdd}\u{5b58}"),
         )),
     )
-    .map_err(|error| app_error_message(language, &error))
+    .map_err(|error| app_error_message(language, &error))?;
+    super::update_tray_from_state(&app, &app_state).await;
+    Ok(presentation)
 }
 
 #[tauri::command]
@@ -251,20 +257,39 @@ pub async fn activate_account(
         &app_state.switch_backups_dir,
     )
     .map_err(|error| app_error_message(language, &error))?;
-    let repair_summary = repair_local_threads(&app_state)
-        .await
-        .map_err(|error| app_error_message(language, &error))?;
+    let repair_result = repair_local_threads(&app_state).await;
     super::spawn_refresh(app, app_state.clone());
-    build_accounts_presentation_with_provider_mode(
-        &vault,
-        &app_state.provider_mode_dir,
-        language,
-        Some(switch_success_message(
+    let message = match repair_result {
+        Ok(repair_summary) => switch_success_message(
             language,
             "Account activated",
             &repair_summary,
             rollout_updates,
-        )),
+        ),
+        Err(error) => format!(
+            "{}. Rollout: {rollout_updates}. {}: {}",
+            localize(
+                language,
+                LocalizedText::new(
+                    "Account activated",
+                    "\u{8d26}\u{53f7}\u{5df2}\u{5207}\u{6362}"
+                )
+            ),
+            localize(
+                language,
+                LocalizedText::new(
+                    "Session repair failed",
+                    "\u{4f1a}\u{8bdd}\u{4fee}\u{590d}\u{5931}\u{8d25}"
+                )
+            ),
+            app_error_message(language, &error)
+        ),
+    };
+    build_accounts_presentation_with_provider_mode(
+        &vault,
+        &app_state.provider_mode_dir,
+        language,
+        Some(message),
     )
     .map_err(|error| app_error_message(language, &error))
 }
@@ -298,6 +323,7 @@ pub async fn rollback_last_change(
 
 #[tauri::command]
 pub async fn repair_now(
+    app: tauri::AppHandle,
     state: tauri::State<'_, SharedAppState>,
 ) -> Result<AccountsPresentation, String> {
     let app_state = state.inner().clone();
@@ -306,7 +332,7 @@ pub async fn repair_now(
     let summary = repair_local_threads(&app_state)
         .await
         .map_err(|error| app_error_message(language, &error))?;
-    build_accounts_presentation_with_provider_mode(
+    let presentation = build_accounts_presentation_with_provider_mode(
         &vault,
         &app_state.provider_mode_dir,
         language,
@@ -325,7 +351,9 @@ pub async fn repair_now(
             ),
         ),
     )
-    .map_err(|error| app_error_message(language, &error))
+    .map_err(|error| app_error_message(language, &error))?;
+    super::update_tray_from_state(&app, &app_state).await;
+    Ok(presentation)
 }
 
 #[tauri::command]
@@ -461,6 +489,7 @@ pub async fn exit_provider_mode(
 
 #[tauri::command]
 pub async fn rename_account(
+    app: tauri::AppHandle,
     state: tauri::State<'_, SharedAppState>,
     account_id: String,
     display_name: String,
@@ -471,7 +500,7 @@ pub async fn rename_account(
     vault
         .rename_account(&account_id, &display_name)
         .map_err(|error| app_error_message(language, &error))?;
-    build_accounts_presentation_with_provider_mode(
+    let presentation = build_accounts_presentation_with_provider_mode(
         &vault,
         &app_state.provider_mode_dir,
         language,
@@ -483,11 +512,14 @@ pub async fn rename_account(
             ),
         )),
     )
-    .map_err(|error| app_error_message(language, &error))
+    .map_err(|error| app_error_message(language, &error))?;
+    super::update_tray_from_state(&app, &app_state).await;
+    Ok(presentation)
 }
 
 #[tauri::command]
 pub async fn forget_account(
+    app: tauri::AppHandle,
     state: tauri::State<'_, SharedAppState>,
     account_id: String,
 ) -> Result<AccountsPresentation, String> {
@@ -497,7 +529,7 @@ pub async fn forget_account(
     vault
         .forget_account(&account_id)
         .map_err(|error| app_error_message(language, &error))?;
-    build_accounts_presentation_with_provider_mode(
+    let presentation = build_accounts_presentation_with_provider_mode(
         &vault,
         &app_state.provider_mode_dir,
         language,
@@ -509,7 +541,9 @@ pub async fn forget_account(
             ),
         )),
     )
-    .map_err(|error| app_error_message(language, &error))
+    .map_err(|error| app_error_message(language, &error))?;
+    super::update_tray_from_state(&app, &app_state).await;
+    Ok(presentation)
 }
 
 #[tauri::command]
@@ -527,7 +561,7 @@ pub fn spawn_activate_account_from_tray(
     tauri::async_runtime::spawn(async move {
         let language = super::current_resolved_language(&state).await;
         let vault = AccountVault::new(state.accounts_dir.clone());
-        let result = async {
+        let activation_result = (|| {
             ensure_provider_mode_inactive(&state.provider_mode_dir)
                 .map_err(|error| app_error_message(language, &error))?;
             let record = vault
@@ -539,19 +573,19 @@ pub fn spawn_activate_account_from_tray(
                 &state.switch_backups_dir,
             )
             .map_err(|error| app_error_message(language, &error))?;
-            repair_local_threads(&state)
-                .await
-                .map_err(|error| app_error_message(language, &error))?;
             Ok::<(), String>(())
-        }
-        .await;
+        })();
 
-        if let Err(error) = result {
+        if let Err(error) = activation_result {
             let mut snapshot = state.tray_snapshot.lock().await;
             snapshot.last_error = Some(crate::errors::AppError::AccountActivationFailed(error));
             drop(snapshot);
             let _ = super::update_tray_from_state(&app, &state).await;
         } else {
+            if let Err(error) = repair_local_threads(&state).await {
+                let mut snapshot = state.tray_snapshot.lock().await;
+                snapshot.last_error = Some(error);
+            }
             super::spawn_refresh(app.clone(), state.clone());
         }
     });

@@ -13,6 +13,7 @@ mod account_vault;
 mod app_state;
 mod codex_desktop;
 mod codex_home;
+mod dashboard;
 mod errors;
 mod launch_at_login;
 mod localization;
@@ -24,8 +25,9 @@ mod scheduler;
 mod session_manager;
 mod settings;
 mod tray;
+mod widget;
 
-use app_state::{AppState, SharedAppState, TraySnapshot};
+use app_state::{AppState, RefreshGate, SharedAppState, TraySnapshot};
 use codex_home::resolve_codex_home;
 use errors::AppError;
 use launch_at_login::{apply_settings_transaction, WindowsRunKeyLaunchAtLogin};
@@ -105,11 +107,61 @@ async fn update_settings(
     ))
 }
 
+#[tauri::command]
+async fn get_dashboard_state(
+    state: tauri::State<'_, SharedAppState>,
+) -> Result<dashboard::DashboardState, String> {
+    Ok(dashboard::build_dashboard_state(state.inner()).await)
+}
+
+#[tauri::command]
+fn widget_hide(app: AppHandle) {
+    widget::hide_widget(&app);
+}
+
+#[tauri::command]
+fn widget_refresh(app: AppHandle, state: tauri::State<'_, SharedAppState>) {
+    spawn_refresh(app, state.inner().clone());
+}
+
+#[tauri::command]
+fn widget_open_settings(app: AppHandle) {
+    widget::hide_widget(&app);
+    show_settings_window(&app);
+}
+
+#[tauri::command]
+fn widget_open_session_manager(app: AppHandle, state: tauri::State<'_, SharedAppState>) {
+    widget::hide_widget(&app);
+    spawn_open_session_manager(app, state.inner().clone());
+}
+
+#[tauri::command]
+fn widget_open_codex_folder(
+    app: AppHandle,
+    state: tauri::State<'_, SharedAppState>,
+) -> Result<(), String> {
+    open::that(&state.codex_home).map_err(|error| error.to_string())?;
+    widget::hide_widget(&app);
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(
+            |app, _arguments, _cwd| {
+                widget::show_widget(app, None);
+            },
+        ))
         .invoke_handler(tauri::generate_handler![
             get_settings,
             update_settings,
+            get_dashboard_state,
+            widget_hide,
+            widget_refresh,
+            widget_open_settings,
+            widget_open_session_manager,
+            widget_open_codex_folder,
             account_commands::get_accounts,
             account_commands::import_current_chatgpt_account,
             account_commands::add_api_account,
@@ -161,11 +213,13 @@ fn main() {
                     session_paths,
                 )),
                 refresh_scheduler: tauri::async_runtime::Mutex::new(RefreshScheduler::new()),
-                refresh_in_progress: tauri::async_runtime::Mutex::new(false),
+                refresh_gate: std::sync::Mutex::new(RefreshGate::default()),
+                dashboard_revision: std::sync::atomic::AtomicU64::new(0),
                 quota_timeout: Duration::from_secs(10),
             });
 
             app.manage(state.clone());
+            widget::prepare_windows(&app_handle);
             let resolved_language =
                 resolve_language(settings.app_language, &system_language_hints());
             let vault = account_vault::AccountVault::new(state.accounts_dir.clone());
@@ -293,6 +347,8 @@ fn system_language_hints() -> Vec<String> {
 
 pub(crate) async fn update_tray_from_state(app: &AppHandle, state: &SharedAppState) {
     let snapshot = state.tray_snapshot.lock().await.clone();
+    let active_account_id = dashboard::resolve_active_account_id(state);
+    let tray_snapshot = tray::account_scoped_snapshot(&snapshot, active_account_id.as_deref());
     let language = current_resolved_language(state).await;
     let vault = account_vault::AccountVault::new(state.accounts_dir.clone());
     let accounts = account_commands::build_accounts_presentation_with_provider_mode(
@@ -302,44 +358,59 @@ pub(crate) async fn update_tray_from_state(app: &AppHandle, state: &SharedAppSta
         None,
     )
     .ok();
-    let _ = tray::update_tray_menu(app, &snapshot, language, accounts.as_ref());
+    let _ = tray::update_tray_menu(app, &tray_snapshot, language, accounts.as_ref());
+    let _ = dashboard::emit_dashboard_state(app, state).await;
 }
 
 pub(crate) fn spawn_refresh(app: AppHandle, state: SharedAppState) {
+    let should_start = {
+        let mut gate = state
+            .refresh_gate
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        gate.request()
+    };
+    if !should_start {
+        return;
+    }
+
     tauri::async_runtime::spawn(async move {
-        {
-            let mut in_progress = state.refresh_in_progress.lock().await;
-            if *in_progress {
-                return;
+        loop {
+            let quota_owner_account_id = dashboard::resolve_active_account_id(&state);
+            {
+                let mut snapshot = state.tray_snapshot.lock().await;
+                snapshot.is_refreshing = true;
             }
-            *in_progress = true;
-        }
+            update_tray_from_state(&app, &state).await;
 
-        {
+            let result = fetch_current_quota(&state.codex_home, state.quota_timeout).await;
             let mut snapshot = state.tray_snapshot.lock().await;
-            snapshot.is_refreshing = true;
-        }
-        update_tray_from_state(&app, &state).await;
-
-        let result = fetch_current_quota(&state.codex_home, state.quota_timeout).await;
-        {
-            let mut snapshot = state.tray_snapshot.lock().await;
-            snapshot.is_refreshing = false;
             match result {
                 Ok(quota) => {
                     snapshot.quota = Some(quota);
+                    snapshot.quota_owner_account_id = quota_owner_account_id;
                     snapshot.last_error = None;
                 }
                 Err(error) => {
                     snapshot.last_error = Some(error);
                 }
             }
-        }
-        update_tray_from_state(&app, &state).await;
+            let continue_refreshing = {
+                let mut gate = state
+                    .refresh_gate
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                gate.complete_cycle()
+            };
+            if !continue_refreshing {
+                snapshot.is_refreshing = false;
+            }
+            drop(snapshot);
+            update_tray_from_state(&app, &state).await;
 
-        {
-            let mut in_progress = state.refresh_in_progress.lock().await;
-            *in_progress = false;
+            if !continue_refreshing {
+                break;
+            }
         }
     });
 }

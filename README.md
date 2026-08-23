@@ -279,11 +279,49 @@ historical session JSONL files during Safe Switch and Provider-mode entry, Codex
 desktop close/reopen guards around file-changing switches, a local Provider sync
 inspector on the Accounts page, opening the local Codex folder, and clean quit.
 
+#### Desktop widget interaction
+
+![Windows desktop quota widget concept](docs/images/windows-widget-concept.png)
+
+The Windows app keeps its existing Settings window and adds a preloaded desktop
+widget for daily use:
+
+- Left-click the tray icon to show or hide the widget at the right edge of the
+  tray icon's monitor. Right-click still opens the complete system menu.
+- The widget stays out of the taskbar and Alt+Tab, temporarily stays on top while
+  visible, and hides on focus loss, `Esc`, or a second tray click.
+- Positioning uses the monitor work area in physical pixels, so mixed-DPI and
+  negative-coordinate multi-monitor layouts avoid every taskbar orientation.
+- The panel shows the real active account, all returned quota windows and reset
+  times, stale/error/loading/empty states, saved-account switching, refresh,
+  Settings, Session Manager, Repair Now, and the Codex folder.
+- Account switching remains busy until the refresh revision requested by that
+  switch completes. Failed refreshes keep the last successful quota visible and
+  surface the error as stale data instead of replacing it with `0%`.
+- A single-instance guard prevents duplicate tray icons and refresh schedulers.
+  Closing either window only hides it; **Quit** in the tray menu exits the app.
+
+The widget follows the same English/Chinese setting as the rest of the app and
+uses keyboard-focusable controls throughout.
+
 Build it on Windows:
 
 ```powershell
 scripts\build-windows-tray.ps1
 ```
+
+For UI work, a browser-safe mock preview is available without touching local
+Codex data:
+
+```powershell
+cd WindowsTray
+npm ci
+npm run preview:widget
+```
+
+Open `http://127.0.0.1:1420/?preview=widget`. Add
+`&state=loading`, `&state=error`, `&state=empty`, or `&state=stale` to inspect
+edge states, and `&lang=zh` for Chinese.
 
 The build script stages the bundled Session Manager and Node runtime, then
 produces both installers:

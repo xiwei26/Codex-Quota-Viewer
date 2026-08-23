@@ -12,11 +12,28 @@
   "app": {
     "windows": [
       {
+        "label": "main",
+        "url": "index.html?view=settings",
         "title": "Codex Quota Viewer Settings",
         "width": 520,
         "height": 340,
         "visible": false,
         "resizable": false
+      },
+      {
+        "label": "widget",
+        "url": "index.html?view=widget",
+        "title": "Codex Quota Viewer",
+        "width": 448,
+        "height": 880,
+        "visible": false,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": true,
+        "skipTaskbar": true,
+        "alwaysOnTop": false,
+        "focus": true
       }
     ],
     "security": {

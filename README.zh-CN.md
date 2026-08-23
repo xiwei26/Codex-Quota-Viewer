@@ -246,11 +246,37 @@ swift build -c release --product CodexQuotaViewer
 
 本仓库现在包含一个基于 Tauri 的 Windows 托盘应用。它专注于显示当前活动的 Codex 账号额度、支持配置的刷新频率、General 和 Accounts 设置、保存 ChatGPT/API 账号（支持 API 自动探测）、直接激活账号（带 Safe Switch 备份与回滚）、ChatGPT 登录的第三方 Provider 模式、打开内置的 Session Manager、自动及手动修复本地官方线程元数据、Safe Switch 或 Provider 模式切换时的历史会话同步、切换时的 Codex 桌面进程关闭/重开保护、Accounts 页面本地 Provider 同步检查器、打开本地 Codex 目录，以及干净地退出。
 
+#### 桌面小组件交互
+
+![Windows 桌面额度小组件概念图](docs/images/windows-widget-concept.png)
+
+Windows 版本保留原有设置窗口，同时新增一个启动后即预热、日常可快速唤起的桌面小组件：
+
+- 左键单击托盘图标，在托盘图标所在显示器的工作区右侧显示或隐藏小组件；右键仍然打开完整系统菜单。
+- 小组件不进入任务栏和 `Alt+Tab`，显示时临时置顶；失去焦点、按 `Esc` 或再次单击托盘图标都会隐藏。
+- 定位全程使用物理像素和显示器工作区，支持混合 DPI、负坐标多屏，并避开各个方向的任务栏。
+- 面板展示真实当前账号、服务端返回的全部额度窗口与重置时间，并提供账号切换、刷新、设置、Session Manager、立即修复和打开 Codex 文件夹；加载、错误、空数据与 stale 状态都有明确反馈。
+- 账号切换会保持 busy，直到该次切换请求的额度刷新 revision 真正完成。刷新失败时保留上次成功额度并显示 stale 错误，不会把 API 空窗口误显示为 `0%`。
+- 单实例保护避免重复托盘图标和重复刷新调度器。关闭任一窗口只会隐藏；只有托盘菜单里的 **退出** 才会终止程序。
+
+小组件沿用应用现有的中英文设置，所有主要操作均可用键盘访问。
+
 在 Windows 上构建：
 
 ```powershell
 scripts\build-windows-tray.ps1
 ```
+
+做 UI 调整时，可以使用不会读取或修改本地 Codex 数据的浏览器 mock 预览：
+
+```powershell
+cd WindowsTray
+npm ci
+npm run preview:widget
+```
+
+打开 `http://127.0.0.1:1420/?preview=widget`。追加
+`&state=loading`、`&state=error`、`&state=empty` 或 `&state=stale` 可检查边界状态，追加 `&lang=zh` 可预览中文。
 
 构建脚本会暂存内置的 Session Manager 和 Node 运行时，然后生成两种安装包：
 
