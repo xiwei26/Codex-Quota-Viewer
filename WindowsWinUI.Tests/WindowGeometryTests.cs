@@ -10,11 +10,11 @@ public sealed class WindowGeometryTests
     {
         var placement = WidgetPlacement.ForWorkArea(new PixelRect(0, 0, 1920, 1040), 96);
 
-        Assert.Equal(1468, placement.VisibleX);
+        Assert.Equal(1548, placement.VisibleX);
         Assert.Equal(1932, placement.HiddenX);
-        Assert.Equal(90, placement.Y);
-        Assert.Equal(440, placement.Width);
-        Assert.Equal(860, placement.Height);
+        Assert.Equal(508, placement.Y);
+        Assert.Equal(360, placement.Width);
+        Assert.Equal(520, placement.Height);
     }
 
     [Fact]
@@ -22,11 +22,11 @@ public sealed class WindowGeometryTests
     {
         var placement = WidgetPlacement.ForWorkArea(new PixelRect(1920, 0, 4480, 1400), 144);
 
-        Assert.Equal(3802, placement.VisibleX);
+        Assert.Equal(3922, placement.VisibleX);
         Assert.Equal(4498, placement.HiddenX);
-        Assert.Equal(55, placement.Y);
-        Assert.Equal(660, placement.Width);
-        Assert.Equal(1290, placement.Height);
+        Assert.Equal(602, placement.Y);
+        Assert.Equal(540, placement.Width);
+        Assert.Equal(780, placement.Height);
     }
 
     [Fact]
@@ -34,10 +34,11 @@ public sealed class WindowGeometryTests
     {
         var placement = WidgetPlacement.ForWorkArea(new PixelRect(48, 0, 1280, 720), 96);
 
-        Assert.Equal(828, placement.VisibleX);
+        Assert.Equal(908, placement.VisibleX);
         Assert.Equal(1292, placement.HiddenX);
-        Assert.Equal(12, placement.Y);
-        Assert.Equal(696, placement.Height);
+        Assert.Equal(188, placement.Y);
+        Assert.Equal(360, placement.Width);
+        Assert.Equal(520, placement.Height);
     }
 
     [Fact]

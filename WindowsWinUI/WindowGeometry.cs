@@ -16,8 +16,8 @@ public readonly record struct WidgetPlacement(
     public static WidgetPlacement ForWorkArea(
         PixelRect workArea,
         uint dpi,
-        double desiredWidthDip = 440,
-        double desiredHeightDip = 860,
+        double desiredWidthDip = 360,
+        double desiredHeightDip = 520,
         double marginDip = 12)
     {
         if (workArea.Width <= 0 || workArea.Height <= 0)
@@ -32,13 +32,13 @@ public readonly record struct WidgetPlacement(
         var availableWidth = workArea.Width - (horizontalMargin * 2);
         var availableHeight = workArea.Height - (verticalMargin * 2);
         var width = Math.Min(
-            Math.Max(320, (int)Math.Round(desiredWidthDip * scale)),
+            Math.Max(300, (int)Math.Round(desiredWidthDip * scale)),
             availableWidth);
         var height = Math.Min(
-            Math.Max(480, (int)Math.Round(desiredHeightDip * scale)),
+            Math.Max(400, (int)Math.Round(desiredHeightDip * scale)),
             availableHeight);
         var x = workArea.Right - horizontalMargin - width;
-        var y = workArea.Top + verticalMargin + Math.Max(0, (availableHeight - height) / 2);
+        var y = workArea.Bottom - verticalMargin - height;
         return new WidgetPlacement(x, workArea.Right + horizontalMargin, y, width, height);
     }
 

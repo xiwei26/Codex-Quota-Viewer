@@ -80,6 +80,7 @@ public sealed class TrayIconService : IDisposable
                 case NativeMethods.WmLButtonUp:
                 case NativeMethods.NinSelect:
                 case NativeMethods.NinKeySelect:
+                    NativeMethods.ForceForeground(_window);
                     LeftClicked?.Invoke(this, EventArgs.Empty);
                     return 0;
                 case NativeMethods.WmRButtonUp:
@@ -126,7 +127,7 @@ public sealed class TrayIconService : IDisposable
             Add(menu, TrayCommand.Quit, "Quit");
 
             NativeMethods.GetCursorPos(out var cursor);
-            NativeMethods.SetForegroundWindow(_window);
+            NativeMethods.ForceForeground(_window);
             var command = NativeMethods.TrackPopupMenuEx(
                 menu,
                 NativeMethods.TpmRightAlign | NativeMethods.TpmBottomAlign |

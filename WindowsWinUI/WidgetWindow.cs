@@ -73,13 +73,13 @@ public sealed class WidgetWindow : Window
         };
         Content = _root;
 
-        _accountName = Text("Current Codex account", 19, PrimaryText, FontWeights.SemiBold);
-        _accountStatus = Text("Loading account…", 14, SecondaryText);
-        _updated = Text("Starting CoreHost…", 12, SecondaryText);
-        _notice = Text(string.Empty, 12, Color.FromArgb(255, 244, 174, 174));
+        _accountName = Text("Current Codex account", 15, PrimaryText, FontWeights.SemiBold);
+        _accountStatus = Text("Loading account…", 12, SecondaryText);
+        _updated = Text("Starting CoreHost…", 11, SecondaryText);
+        _notice = Text(string.Empty, 11, Color.FromArgb(255, 244, 174, 174));
         _notice.TextWrapping = TextWrapping.Wrap;
         _notice.Visibility = Visibility.Collapsed;
-        _quotaPanel = new StackPanel { Spacing = 12 };
+        _quotaPanel = new StackPanel { Spacing = 8 };
         _accountsPanel = new StackPanel { Spacing = 0 };
         _refreshButton = CircleButton("\uE72C", "Refresh quota");
         _refreshButton.Click += async (_, _) => await RefreshAsync(true);
@@ -97,6 +97,7 @@ public sealed class WidgetWindow : Window
         _presenter.IsAlwaysOnTop = false;
         _presenter.SetBorderAndTitleBar(false, false);
         _appWindow.SetPresenter(_presenter);
+        _appWindow.Hide();
 
         var style = NativeMethods.GetWindowLongPtr(_windowHandle, NativeMethods.GwlExStyle).ToInt64();
         style = (style | NativeMethods.WsExToolWindow) & ~NativeMethods.WsExAppWindow;
@@ -128,7 +129,7 @@ public sealed class WidgetWindow : Window
         }
         else
         {
-            _ignoreDeactivationUntil = DateTimeOffset.UtcNow.AddMilliseconds(180);
+            _ignoreDeactivationUntil = DateTimeOffset.UtcNow.AddMilliseconds(250);
             ScheduleDeactivationCheck();
         }
     }
@@ -161,15 +162,20 @@ public sealed class WidgetWindow : Window
             _placement.Width,
             _placement.Height));
         _presenter.IsAlwaysOnTop = true;
+        _appWindow.Show();
         _shown = true;
-        _ignoreDeactivationUntil = DateTimeOffset.UtcNow.AddMilliseconds(450);
+        _isWindowActive = true;
+        _ignoreDeactivationUntil = DateTimeOffset.UtcNow.AddMilliseconds(600);
         Activate();
+        NativeMethods.ForceForeground(_windowHandle);
         var completed = await AnimateToAsync(_placement.VisibleX);
         if (completed && _shown)
         {
+            _isWindowActive = true;
+            _ignoreDeactivationUntil = DateTimeOffset.UtcNow.AddMilliseconds(600);
+            NativeMethods.ForceForeground(_windowHandle);
             _root.Focus(FocusState.Programmatic);
         }
-        ScheduleDeactivationCheck();
     }
 
     public async Task HideAsync()
@@ -341,8 +347,8 @@ public sealed class WidgetWindow : Window
         _accountsPanel.Children.Clear();
         if (state.Accounts.Count == 0)
         {
-            var empty = Text("No saved accounts — add the current account in Settings.", 13, SecondaryText);
-            empty.Margin = new Thickness(14, 16, 14, 16);
+            var empty = Text("No saved accounts — add the current account in Settings.", 12, SecondaryText);
+            empty.Margin = new Thickness(12, 12, 12, 12);
             empty.TextWrapping = TextWrapping.Wrap;
             _accountsPanel.Children.Add(empty);
         }
@@ -356,7 +362,7 @@ public sealed class WidgetWindow : Window
                     {
                         Height = 1,
                         Background = new SolidColorBrush(Color.FromArgb(38, 255, 255, 255)),
-                        Margin = new Thickness(14, 0, 14, 0)
+                        Margin = new Thickness(10, 0, 10, 0)
                     });
                 }
                 _accountsPanel.Children.Add(BuildAccountRow(state.Accounts[index]));
@@ -398,8 +404,8 @@ public sealed class WidgetWindow : Window
         };
         var shell = new Border
         {
-            Margin = new Thickness(6),
-            CornerRadius = new CornerRadius(20),
+            Margin = new Thickness(4),
+            CornerRadius = new CornerRadius(16),
             BorderThickness = new Thickness(1),
             BorderBrush = new SolidColorBrush(Color.FromArgb(100, 137, 126, 147)),
             Background = background
@@ -410,24 +416,24 @@ public sealed class WidgetWindow : Window
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Padding = new Thickness(20, 18, 20, 18)
+            Padding = new Thickness(14, 12, 14, 12)
         };
         shell.Child = scroll;
-        var body = new StackPanel { Spacing = 12 };
+        var body = new StackPanel { Spacing = 9 };
         scroll.Content = body;
 
-        var header = new Grid { Margin = new Thickness(2, 0, 2, 5) };
+        var header = new Grid { Margin = new Thickness(2, 0, 2, 4) };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var logo = BuildLogo();
         header.Children.Add(logo);
-        var title = Text("Codex Quota Viewer", 21, PrimaryText, FontWeights.SemiBold);
+        var title = Text("Codex Quota Viewer", 15, PrimaryText, FontWeights.SemiBold);
         title.VerticalAlignment = VerticalAlignment.Center;
-        title.Margin = new Thickness(12, 0, 0, 0);
+        title.Margin = new Thickness(8, 0, 0, 0);
         Grid.SetColumn(title, 1);
         header.Children.Add(title);
-        var headerActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var headerActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         headerActions.Children.Add(_refreshButton);
         var settings = CircleButton("\uE713", "Settings");
         settings.Click += (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty);
@@ -438,8 +444,8 @@ public sealed class WidgetWindow : Window
 
         body.Children.Add(BuildActiveAccountCard());
         body.Children.Add(_quotaPanel);
-        var accountsTitle = Text("Accounts", 14, SecondaryText, FontWeights.SemiBold);
-        accountsTitle.Margin = new Thickness(1, 3, 0, 0);
+        var accountsTitle = Text("Accounts", 13, SecondaryText, FontWeights.SemiBold);
+        accountsTitle.Margin = new Thickness(1, 2, 0, 0);
         body.Children.Add(accountsTitle);
         body.Children.Add(Card(_accountsPanel, padding: 0));
         body.Children.Add(BuildActionsCard());
@@ -453,14 +459,14 @@ public sealed class WidgetWindow : Window
         {
             return new Image
             {
-                Width = 34,
-                Height = 34,
+                Width = 26,
+                Height = 26,
                 Source = new SvgImageSource(new Uri("ms-appx:///Assets/openai-blossom-dark.svg"))
             };
         }
         catch
         {
-            return new FontIcon { Glyph = "\uE943", FontSize = 30, Foreground = new SolidColorBrush(PrimaryText) };
+            return new FontIcon { Glyph = "\uE943", FontSize = 22, Foreground = new SolidColorBrush(PrimaryText) };
         }
     }
 
@@ -469,44 +475,44 @@ public sealed class WidgetWindow : Window
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var avatar = Avatar(Color.FromArgb(150, 101, 67, 115), 54);
+        var avatar = Avatar(Color.FromArgb(150, 101, 67, 115), 38);
         grid.Children.Add(avatar);
-        var labels = new StackPanel { Spacing = 4, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) };
+        var labels = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
         labels.Children.Add(_accountName);
-        var statusGrid = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var statusGrid = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         statusGrid.Children.Add(_accountStatus);
         statusGrid.Children.Add(new Border
         {
-            Width = 9,
-            Height = 9,
-            CornerRadius = new CornerRadius(5),
+            Width = 7,
+            Height = 7,
+            CornerRadius = new CornerRadius(4),
             Background = new SolidColorBrush(Mint),
             VerticalAlignment = VerticalAlignment.Center
         });
         labels.Children.Add(statusGrid);
         Grid.SetColumn(labels, 1);
         grid.Children.Add(labels);
-        return Card(grid, 18);
+        return Card(grid, 12);
     }
 
     private Border BuildQuotaCard(QuotaWindow window)
     {
-        var body = new StackPanel { Spacing = 9 };
-        var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+        var body = new StackPanel { Spacing = 6 };
+        var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         heading.Children.Add(IconBubble(window.WindowDurationMins >= 1440 ? "\uE787" : "\uE823"));
-        heading.Children.Add(Text(FriendlyWindowLabel(window), 17, PrimaryText, FontWeights.SemiBold));
+        heading.Children.Add(Text(FriendlyWindowLabel(window), 13, PrimaryText, FontWeights.SemiBold));
         body.Children.Add(heading);
-        var valueRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(42, 0, 0, 0) };
-        valueRow.Children.Add(Text($"{Math.Round(window.RemainingPercent):0}%", 32, PrimaryText, FontWeights.SemiBold));
-        var left = Text("left", 14, SecondaryText);
+        var valueRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(34, 0, 0, 0) };
+        valueRow.Children.Add(Text($"{Math.Round(window.RemainingPercent):0}%", 24, PrimaryText, FontWeights.SemiBold));
+        var left = Text("left", 12, SecondaryText);
         left.VerticalAlignment = VerticalAlignment.Bottom;
-        left.Margin = new Thickness(0, 0, 0, 6);
+        left.Margin = new Thickness(0, 0, 0, 4);
         valueRow.Children.Add(left);
         body.Children.Add(valueRow);
         var meter = new Grid
         {
-            Height = 7,
-            Margin = new Thickness(42, 0, 0, 0),
+            Height = 5,
+            Margin = new Thickness(34, 0, 0, 0),
             Background = new SolidColorBrush(Color.FromArgb(70, 225, 220, 230))
         };
         var percentage = Math.Clamp(window.RemainingPercent, 0.001, 100);
@@ -515,36 +521,36 @@ public sealed class WidgetWindow : Window
         meter.Children.Add(new Border
         {
             Background = new SolidColorBrush(Mint),
-            CornerRadius = new CornerRadius(4)
+            CornerRadius = new CornerRadius(3)
         });
         body.Children.Add(meter);
-        var reset = Text(ResetText(window.ResetsAt), 13, SecondaryText);
-        reset.Margin = new Thickness(42, 0, 0, 0);
+        var reset = Text(ResetText(window.ResetsAt), 11, SecondaryText);
+        reset.Margin = new Thickness(34, 0, 0, 0);
         body.Children.Add(reset);
-        return Card(body, 14);
+        return Card(body, 10);
     }
 
     private Border BuildUnavailableQuotaCard(string message)
     {
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
         panel.Children.Add(IconBubble("\uE783"));
-        var label = Text(message, 13, SecondaryText);
+        var label = Text(message, 12, SecondaryText);
         label.TextWrapping = TextWrapping.Wrap;
         panel.Children.Add(label);
-        return Card(panel, 14);
+        return Card(panel, 10);
     }
 
     private Grid BuildAccountRow(AccountView account)
     {
-        var row = new Grid { MinHeight = 62, Padding = new Thickness(13, 8, 13, 8) };
+        var row = new Grid { MinHeight = 44, Padding = new Thickness(10, 6, 10, 6) };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.Children.Add(Avatar(
             account.Kind == "api" ? Color.FromArgb(180, 44, 131, 86) : Color.FromArgb(150, 101, 67, 115),
-            38));
-        var label = Text(account.DisplayName, 15, PrimaryText, FontWeights.Medium);
-        label.Margin = new Thickness(12, 0, 8, 0);
+            28));
+        var label = Text(account.DisplayName, 13, PrimaryText, FontWeights.Medium);
+        label.Margin = new Thickness(10, 0, 6, 0);
         label.VerticalAlignment = VerticalAlignment.Center;
         label.TextTrimming = TextTrimming.CharacterEllipsis;
         Grid.SetColumn(label, 1);
@@ -555,7 +561,7 @@ public sealed class WidgetWindow : Window
             action = new FontIcon
             {
                 Glyph = "\uE73E",
-                FontSize = 18,
+                FontSize = 15,
                 Foreground = new SolidColorBrush(Mint),
                 VerticalAlignment = VerticalAlignment.Center
             };
@@ -565,8 +571,9 @@ public sealed class WidgetWindow : Window
             var button = new Button
             {
                 Content = "Switch",
-                Padding = new Thickness(13, 6, 13, 6),
-                CornerRadius = new CornerRadius(7),
+                FontSize = 12,
+                Padding = new Thickness(10, 4, 10, 4),
+                CornerRadius = new CornerRadius(6),
                 Background = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)),
                 BorderBrush = new SolidColorBrush(Color.FromArgb(64, 255, 255, 255)),
                 BorderThickness = new Thickness(1)
@@ -592,26 +599,28 @@ public sealed class WidgetWindow : Window
 
     private Button ActionRow(string glyph, string label, Action action)
     {
-        var grid = new Grid { Padding = new Thickness(14, 13, 12, 13) };
+        var grid = new Grid { Padding = new Thickness(12, 9, 10, 9) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.Children.Add(new FontIcon { Glyph = glyph, FontSize = 21, Foreground = new SolidColorBrush(SecondaryText) });
-        var text = Text(label, 15, PrimaryText);
-        text.Margin = new Thickness(15, 0, 0, 0);
+        grid.Children.Add(new FontIcon { Glyph = glyph, FontSize = 15, Foreground = new SolidColorBrush(SecondaryText) });
+        var text = Text(label, 13, PrimaryText);
+        text.Margin = new Thickness(10, 0, 0, 0);
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
-        var chevron = new FontIcon { Glyph = "\uE76C", FontSize = 13, Foreground = new SolidColorBrush(SecondaryText) };
+        var chevron = new FontIcon { Glyph = "\uE76C", FontSize = 11, Foreground = new SolidColorBrush(SecondaryText) };
         Grid.SetColumn(chevron, 2);
         grid.Children.Add(chevron);
+
         var button = new Button
         {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Content = grid,
             Padding = new Thickness(0),
             Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
             BorderThickness = new Thickness(0),
-            CornerRadius = new CornerRadius(9)
+            CornerRadius = new CornerRadius(8)
         };
         button.Click += (_, _) => action();
         return button;
@@ -661,7 +670,7 @@ public sealed class WidgetWindow : Window
     {
         Child = child,
         Padding = new Thickness(padding),
-        CornerRadius = new CornerRadius(12),
+        CornerRadius = new CornerRadius(10),
         Background = new SolidColorBrush(CardFill),
         BorderBrush = new SolidColorBrush(CardStroke),
         BorderThickness = new Thickness(1)
@@ -683,25 +692,25 @@ public sealed class WidgetWindow : Window
 
     private static Border IconBubble(string glyph) => new()
     {
-        Width = 31,
-        Height = 31,
-        CornerRadius = new CornerRadius(16),
+        Width = 26,
+        Height = 26,
+        CornerRadius = new CornerRadius(13),
         Background = new SolidColorBrush(Color.FromArgb(70, 168, 145, 176)),
-        Child = new FontIcon { Glyph = glyph, FontSize = 15, Foreground = new SolidColorBrush(PrimaryText) }
+        Child = new FontIcon { Glyph = glyph, FontSize = 13, Foreground = new SolidColorBrush(PrimaryText) }
     };
 
     private static Button CircleButton(string glyph, string tooltip)
     {
         var button = new Button
         {
-            Width = 42,
-            Height = 42,
+            Width = 32,
+            Height = 32,
             Padding = new Thickness(0),
-            CornerRadius = new CornerRadius(21),
+            CornerRadius = new CornerRadius(16),
             Background = new SolidColorBrush(Color.FromArgb(30, 255, 255, 255)),
             BorderBrush = new SolidColorBrush(Color.FromArgb(55, 255, 255, 255)),
             BorderThickness = new Thickness(1),
-            Content = new FontIcon { Glyph = glyph, FontSize = 19, Foreground = new SolidColorBrush(SecondaryText) }
+            Content = new FontIcon { Glyph = glyph, FontSize = 14, Foreground = new SolidColorBrush(SecondaryText) }
         };
         ToolTipService.SetToolTip(button, tooltip);
         return button;
@@ -711,7 +720,7 @@ public sealed class WidgetWindow : Window
     {
         Height = 1,
         Background = new SolidColorBrush(Color.FromArgb(38, 255, 255, 255)),
-        Margin = new Thickness(14, 0, 14, 0)
+        Margin = new Thickness(10, 0, 10, 0)
     };
 
     private static TextBlock Text(string value, double size, Color color, FontWeight? weight = null) => new()

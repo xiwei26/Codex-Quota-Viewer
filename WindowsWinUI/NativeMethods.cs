@@ -149,11 +149,63 @@ internal static class NativeMethods
     internal static extern nint GetForegroundWindow();
 
     [DllImport("user32.dll")]
+    internal static extern uint GetWindowThreadProcessId(nint hWnd, out uint lpdwProcessId);
+
+    [DllImport("kernel32.dll")]
+    internal static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, [MarshalAs(UnmanagedType.Bool)] bool fAttach);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool BringWindowToTop(nint hWnd);
+
+    [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool PostMessage(nint window, uint message, nint wParam, nint lParam);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     internal static extern uint RegisterWindowMessage(string message);
+
+    internal static void ForceForeground(nint window)
+    {
+        if (window == nint.Zero)
+        {
+            return;
+        }
+
+        var foregroundWindow = GetForegroundWindow();
+        if (foregroundWindow == window)
+        {
+            return;
+        }
+
+        var currentThreadId = GetCurrentThreadId();
+        var foregroundThreadId = foregroundWindow != nint.Zero
+            ? GetWindowThreadProcessId(foregroundWindow, out _)
+            : 0;
+
+        var attached = false;
+        if (foregroundThreadId != 0 && foregroundThreadId != currentThreadId)
+        {
+            attached = AttachThreadInput(currentThreadId, foregroundThreadId, true);
+        }
+
+        try
+        {
+            BringWindowToTop(window);
+            SetForegroundWindow(window);
+        }
+        finally
+        {
+            if (attached)
+            {
+                AttachThreadInput(currentThreadId, foregroundThreadId, false);
+            }
+        }
+    }
 
     internal static PixelRect WorkAreaFromCursor(nint fallbackWindow, out uint dpi)
     {
