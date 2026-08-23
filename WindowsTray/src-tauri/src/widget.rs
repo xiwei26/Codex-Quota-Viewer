@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WindowEvent};
 
 const WIDGET_LABEL: &str = "widget";
-const WIDGET_LOGICAL_WIDTH: f64 = 448.0;
-const WIDGET_LOGICAL_HEIGHT: f64 = 880.0;
+const WIDGET_LOGICAL_WIDTH: f64 = 360.0;
+const WIDGET_LOGICAL_HEIGHT: f64 = 520.0;
 const WIDGET_LOGICAL_MARGIN: f64 = 12.0;
 const TOGGLE_DEBOUNCE: Duration = Duration::from_millis(180);
 const FOCUS_GUARD: Duration = Duration::from_millis(280);
@@ -213,7 +213,7 @@ fn calculate_widget_geometry(work_area: WorkArea, scale_factor: f64) -> WidgetGe
     let height = ((WIDGET_LOGICAL_HEIGHT * scale_factor).round() as u32).min(available_height);
     let x =
         i64::from(work_area.x) + i64::from(work_area.width) - i64::from(width) - i64::from(margin);
-    let y = i64::from(work_area.y) + i64::from(margin);
+    let y = i64::from(work_area.y) + i64::from(work_area.height) - i64::from(height) - i64::from(margin);
 
     WidgetGeometry {
         position: PhysicalPosition::new(clamp_i64_to_i32(x), clamp_i64_to_i32(y)),
@@ -230,7 +230,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn anchors_to_the_right_edge_of_the_work_area() {
+    fn anchors_to_the_bottom_right_edge_of_the_work_area() {
         let geometry = calculate_widget_geometry(
             WorkArea {
                 x: 0,
@@ -241,8 +241,8 @@ mod tests {
             1.0,
         );
 
-        assert_eq!(geometry.position, PhysicalPosition::new(1460, 12));
-        assert_eq!(geometry.size, PhysicalSize::new(448, 880));
+        assert_eq!(geometry.position, PhysicalPosition::new(1548, 508));
+        assert_eq!(geometry.size, PhysicalSize::new(360, 520));
     }
 
     #[test]
@@ -257,8 +257,8 @@ mod tests {
             1.5,
         );
 
-        assert_eq!(geometry.position, PhysicalPosition::new(-690, 58));
-        assert_eq!(geometry.size, PhysicalSize::new(672, 1320));
+        assert_eq!(geometry.position, PhysicalPosition::new(-558, 642));
+        assert_eq!(geometry.size, PhysicalSize::new(540, 780));
     }
 
     #[test]
@@ -273,7 +273,7 @@ mod tests {
             1.25,
         );
 
-        assert_eq!(geometry.position, PhysicalPosition::new(705, 15));
-        assert_eq!(geometry.size, PhysicalSize::new(560, 650));
+        assert_eq!(geometry.position, PhysicalPosition::new(815, 15));
+        assert_eq!(geometry.size, PhysicalSize::new(450, 650));
     }
 }

@@ -286,8 +286,9 @@ inspector on the Accounts page, opening the local Codex folder, and clean quit.
 The Windows app keeps its existing Settings window and adds a preloaded desktop
 widget for daily use:
 
-- Left-click the tray icon to show or hide the widget at the right edge of the
-  tray icon's monitor. Right-click still opens the complete system menu.
+- Left-click the tray icon to show or hide the compact popup widget (360x520)
+  anchored directly above the taskbar at the bottom-right of the tray monitor's
+  work area. Right-click still opens the complete system menu.
 - The widget stays out of the taskbar and Alt+Tab, temporarily stays on top while
   visible, and hides on focus loss, `Esc`, or a second tray click.
 - Positioning uses the monitor work area in physical pixels, so mixed-DPI and
