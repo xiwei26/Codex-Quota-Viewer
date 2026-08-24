@@ -334,6 +334,13 @@ CoreHost, icon assets, Session Manager, and Node runtime. The native preview UI
 is currently English-only; its Language control preserves the setting shared
 with the Tauri shell, while native Chinese localization remains follow-up work.
 
+If a notification-area click does not reveal the widget, first exit any older
+resident build and start the newly published executable again. The native shell
+records non-sensitive lifecycle, tray-callback, activation, and placement
+diagnostics in
+`%APPDATA%\com.halfmelon.codexquotaviewer.windows\Logs\winui-runtime.log`.
+The tray context menu also provides **Show / hide widget** as a fallback entry.
+
 ### Windows tray MVP (Tauri)
 
 The repository now includes a Tauri-based Windows tray app. It focuses on

@@ -18,6 +18,7 @@ public partial class App : Application
         InitializeComponent();
         UnhandledException += (_, args) =>
         {
+            RuntimeLog.Write($"UnhandledException: {args.Exception.GetType().Name}: {args.Exception.Message}");
             _widget?.Notify(args.Exception.Message);
             args.Handled = true;
         };
@@ -25,21 +26,32 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        RuntimeLog.Write("App launch requested.");
         var singleInstance = new SingleInstanceService(DispatcherQueue.GetForCurrentThread());
         _singleInstance = singleInstance;
         if (!singleInstance.IsPrimary)
         {
+            RuntimeLog.Write("Secondary instance signalled the primary instance and will exit.");
             singleInstance.Dispose();
             Exit();
             return;
         }
 
+        RuntimeLog.Write("Primary instance is initializing CoreHost, widget, and tray icon.");
         _core = new CoreHostClient();
         _widget = new WidgetWindow(_core);
         var widget = _widget;
-        singleInstance.StartListening(() => _ = widget.ShowAsync());
+        singleInstance.StartListening(() =>
+        {
+            RuntimeLog.Write("Primary instance received a wake signal.");
+            _ = widget.ShowAsync();
+        });
         _tray = new TrayIconService(WinRT.Interop.WindowNative.GetWindowHandle(_widget));
-        _tray.LeftClicked += (_, _) => _ = _widget.ToggleAsync();
+        _tray.LeftClicked += (_, _) =>
+        {
+            RuntimeLog.Write("Tray left-click queued after the shell callback returns.");
+            _ = _widget.ToggleFromTrayAsync();
+        };
         _tray.CommandInvoked += OnTrayCommand;
         _tray.ContextMenuVisibilityChanged += (_, visible) => _widget.SetContextMenuVisible(visible);
 
@@ -49,6 +61,7 @@ public partial class App : Application
         _widget.OpenCodexFolderRequested += async (_, _) => await OpenCodexFolderAsync();
 
         _ = InitializeAsync();
+        RuntimeLog.Write("Primary instance initialization completed; widget remains hidden.");
     }
 
     private async Task InitializeAsync()
@@ -65,6 +78,9 @@ public partial class App : Application
     {
         switch (command)
         {
+            case TrayCommand.ToggleWidget:
+                if (_widget is not null) await _widget.ToggleFromTrayAsync();
+                break;
             case TrayCommand.Refresh:
                 if (_widget is not null) await _widget.RefreshAsync(true);
                 break;

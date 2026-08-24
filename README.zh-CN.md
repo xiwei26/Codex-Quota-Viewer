@@ -303,6 +303,11 @@ WinUI runtime、Rust CoreHost、图标资源、Session Manager 和 Node runtime�
 界面目前仅提供英文；Language 控件会继续保存与 Tauri 壳共享的设置，原生中文本地化仍是
 后续工作。
 
+如果点击通知区域图标后没有显示小组件，请先退出仍在后台运行的旧版本，再启动新发布的
+可执行文件。原生壳会把不含账号内容的生命周期、托盘回调、激活与窗口定位诊断写入
+`%APPDATA%\com.halfmelon.codexquotaviewer.windows\Logs\winui-runtime.log`。
+托盘右键菜单也提供 **Show / hide widget** 作为备用入口。
+
 ### Windows 托盘 MVP 版本（Tauri）
 
 本仓库现在包含一个基于 Tauri 的 Windows 托盘应用。它专注于显示当前活动的 Codex 账号额度、支持配置的刷新频率、General 和 Accounts 设置、保存 ChatGPT/API 账号（支持 API 自动探测）、直接激活账号（带 Safe Switch 备份与回滚）、ChatGPT 登录的第三方 Provider 模式、打开内置的 Session Manager、自动及手动修复本地官方线程元数据、Safe Switch 或 Provider 模式切换时的历史会话同步、切换时的 Codex 桌面进程关闭/重开保护、Accounts 页面本地 Provider 同步检查器、打开本地 Codex 目录，以及干净地退出。

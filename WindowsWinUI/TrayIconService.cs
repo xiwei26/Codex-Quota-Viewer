@@ -10,7 +10,8 @@ public enum TrayCommand
     Repair = 4,
     OpenCodexFolder = 5,
     Rollback = 6,
-    Quit = 7
+    Quit = 7,
+    ToggleWidget = 8
 }
 
 public sealed class TrayIconService : IDisposable
@@ -63,6 +64,7 @@ public sealed class TrayIconService : IDisposable
             InfoTitle = string.Empty
         };
         InstallIcon(required: true);
+        RuntimeLog.Write("Notification area icon installed.");
     }
 
     private nint WndProc(nint window, uint message, nint wParam, nint lParam)
@@ -75,12 +77,13 @@ public sealed class TrayIconService : IDisposable
         if (message == NativeMethods.WmTrayIcon)
         {
             // NOTIFYICON_VERSION_4 packs the event in LOWORD(lParam).
-            switch ((uint)(lParam.ToInt64() & 0xffff))
+            var notification = (uint)(lParam.ToInt64() & 0xffff);
+            RuntimeLog.Write($"Tray callback received notification=0x{notification:X4}.");
+            switch (notification)
             {
                 case NativeMethods.WmLButtonUp:
                 case NativeMethods.NinSelect:
                 case NativeMethods.NinKeySelect:
-                    NativeMethods.ForceForeground(_window);
                     LeftClicked?.Invoke(this, EventArgs.Empty);
                     return 0;
                 case NativeMethods.WmRButtonUp:
@@ -103,7 +106,8 @@ public sealed class TrayIconService : IDisposable
             return;
         }
         _iconData.VersionOrTimeout = NativeMethods.NotifyIconVersion4;
-        NativeMethods.Shell_NotifyIcon(NativeMethods.NimSetVersion, ref _iconData);
+        var versionSet = NativeMethods.Shell_NotifyIcon(NativeMethods.NimSetVersion, ref _iconData);
+        RuntimeLog.Write($"Notification area icon NOTIFYICON_VERSION_4 result={versionSet}.");
     }
 
     private void ShowContextMenu()
@@ -116,6 +120,8 @@ public sealed class TrayIconService : IDisposable
         ContextMenuVisibilityChanged?.Invoke(this, true);
         try
         {
+            Add(menu, TrayCommand.ToggleWidget, "Show / hide widget");
+            NativeMethods.AppendMenu(menu, NativeMethods.MfSeparator, 0, null);
             Add(menu, TrayCommand.Refresh, "Refresh quota");
             Add(menu, TrayCommand.Settings, "Settings…");
             NativeMethods.AppendMenu(menu, NativeMethods.MfSeparator, 0, null);

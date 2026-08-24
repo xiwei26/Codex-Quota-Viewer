@@ -19,6 +19,8 @@ namespace CodexQuotaViewer.WinUI;
 
 public sealed class WidgetWindow : Window
 {
+    private static readonly TimeSpan TrayShellSettleDelay = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan InitialFocusGrace = TimeSpan.FromMilliseconds(1_500);
     private static readonly CultureInfo EnglishUiCulture = CultureInfo.GetCultureInfo("en-US");
     private static readonly Color Mint = Color.FromArgb(255, 134, 228, 177);
     private static readonly Color PrimaryText = Color.FromArgb(255, 247, 244, 249);
@@ -40,6 +42,7 @@ public sealed class WidgetWindow : Window
     private CancellationTokenSource? _animation;
     private CancellationTokenSource? _deactivationCheck;
     private CancellationTokenSource? _refresh;
+    private CancellationTokenSource? _trayToggle;
     private long _refreshGeneration;
     private int _currentX;
     private WidgetPlacement _placement;
@@ -141,6 +144,7 @@ public sealed class WidgetWindow : Window
 
     public async Task ToggleAsync()
     {
+        RuntimeLog.Write($"Widget toggle requested; shown={_shown}, appWindowVisible={_appWindow.IsVisible}.");
         if (_shown)
         {
             await HideAsync();
@@ -151,10 +155,43 @@ public sealed class WidgetWindow : Window
         }
     }
 
+    public async Task ToggleFromTrayAsync()
+    {
+        _trayToggle?.Cancel();
+        var request = new CancellationTokenSource();
+        _trayToggle = request;
+        try
+        {
+            // The notification-area overflow flyout restores foreground ownership
+            // after its WndProc callback returns. Showing inside that callback makes
+            // the widget immediately receive a deactivation and disappear. Let the
+            // shell finish first, and coalesce duplicate mouse/select notifications.
+            await Task.Delay(TrayShellSettleDelay, request.Token);
+            if (ReferenceEquals(_trayToggle, request))
+            {
+                await ToggleAsync();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_trayToggle, request))
+            {
+                _trayToggle = null;
+            }
+            request.Dispose();
+        }
+    }
+
     public async Task ShowAsync()
     {
         var workArea = NativeMethods.WorkAreaFromCursor(_windowHandle, out var dpi);
         _placement = WidgetPlacement.ForWorkArea(workArea, dpi);
+        RuntimeLog.Write(
+            $"Widget show starting; workArea={workArea.Left},{workArea.Top},{workArea.Right},{workArea.Bottom}; " +
+            $"dpi={dpi}; placement={_placement.VisibleX},{_placement.Y},{_placement.Width},{_placement.Height}.");
         _currentX = _placement.HiddenX;
         _appWindow.MoveAndResize(new RectInt32(
             _currentX,
@@ -162,19 +199,21 @@ public sealed class WidgetWindow : Window
             _placement.Width,
             _placement.Height));
         _presenter.IsAlwaysOnTop = true;
-        _appWindow.Show();
         _shown = true;
-        _isWindowActive = true;
-        _ignoreDeactivationUntil = DateTimeOffset.UtcNow.AddMilliseconds(600);
+        _isWindowActive = false;
+        _ignoreDeactivationUntil = DateTimeOffset.UtcNow + InitialFocusGrace;
+        _appWindow.Show(activateWindow: true);
         Activate();
         NativeMethods.ForceForeground(_windowHandle);
+        RuntimeLog.Write($"Widget AppWindow shown; visible={_appWindow.IsVisible}.");
         var completed = await AnimateToAsync(_placement.VisibleX);
         if (completed && _shown)
         {
-            _isWindowActive = true;
-            _ignoreDeactivationUntil = DateTimeOffset.UtcNow.AddMilliseconds(600);
+            _ignoreDeactivationUntil = DateTimeOffset.UtcNow + InitialFocusGrace;
+            Activate();
             NativeMethods.ForceForeground(_windowHandle);
             _root.Focus(FocusState.Programmatic);
+            RuntimeLog.Write($"Widget reveal completed; active={_isWindowActive}, visible={_appWindow.IsVisible}.");
         }
     }
 
@@ -186,12 +225,14 @@ public sealed class WidgetWindow : Window
         }
         _deactivationCheck?.Cancel();
         _shown = false;
+        RuntimeLog.Write("Widget hide starting.");
         var completed = await AnimateToAsync(_placement.HiddenX);
         if (completed && !_shown)
         {
             _appWindow.Hide();
             _presenter.IsAlwaysOnTop = false;
             _isWindowActive = false;
+            RuntimeLog.Write("Widget hide completed.");
         }
     }
 
@@ -272,6 +313,7 @@ public sealed class WidgetWindow : Window
     private void OnActivated(object sender, WindowActivatedEventArgs args)
     {
         _isWindowActive = args.WindowActivationState != WindowActivationState.Deactivated;
+        RuntimeLog.Write($"Widget activation changed to {args.WindowActivationState}; shown={_shown}.");
         if (_isWindowActive)
         {
             _deactivationCheck?.Cancel();
